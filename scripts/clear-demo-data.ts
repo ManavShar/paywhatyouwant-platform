@@ -134,6 +134,15 @@ async function main() {
   // Anything left behind by a product whose vendor was migrated.
   const strayProducts = await db.product.deleteMany({ where: { legacyWpId: null } });
 
+  // Migrated accounts arrived without a password — WordPress hashes were not
+  // in the export. So any password on one of them was put there by
+  // `demo:setup` to make a demo signable-in, and clearing it restores the
+  // imported state rather than destroying anything.
+  const demoLogins = await db.user.updateMany({
+    where: { legacyWpLogin: { not: null }, passwordHash: { not: null } },
+    data: { passwordHash: null },
+  });
+
   console.log(`
   removed
     grants          ${grants.count}
@@ -141,6 +150,7 @@ async function main() {
     orders          ${orders.count}
     accounts        ${users.count}
     stray products  ${strayProducts.count}
+    demo logins     ${demoLogins.count}  (password stripped, account kept)
     uploaded files  ${filesRemoved}
 
   Migrated records were not touched. Run \`npm run migrate:import\` to reset
