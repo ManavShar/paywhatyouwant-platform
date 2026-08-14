@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { OrderStatus } from "@prisma/client";
 import { db } from "@/lib/db";
-import { getStripe } from "@/lib/stripe";
+import { getStripe, accountCanReceiveFunds } from "@/lib/stripe";
 import { createGrant } from "@/lib/downloads";
 
 /**
@@ -113,11 +113,18 @@ export async function POST(request: Request) {
     case "account.updated": {
       // Track Connect onboarding so checkout knows when it can safely route
       // money straight to the creator.
+      //
+      // Readiness is re-read from the v2 capability path rather than taken
+      // from this event's payload. `charges_enabled` and `payouts_enabled`
+      // are deprecated v1 fields and mean something different for a recipient
+      // account — trusting them here would mark a creator ready to be paid
+      // when Stripe cannot actually transfer to them.
       const account = event.data.object;
       if (account.id) {
+        const ready = await accountCanReceiveFunds(account.id);
         await db.user.updateMany({
           where: { stripeAccountId: account.id },
-          data: { stripeOnboardingDone: Boolean(account.charges_enabled) },
+          data: { stripeOnboardingDone: ready },
         });
       }
       break;

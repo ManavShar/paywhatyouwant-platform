@@ -1,13 +1,13 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { currentUser } from "@/lib/auth";
+import { requireVendor } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ProfileForm } from "@/components/vendor/ProfileForm";
 
 export const metadata: Metadata = { title: "Profile" };
 
 export default async function ProfilePage() {
-  const user = (await currentUser())!;
+  const user = await requireVendor();
   const profile = await db.user.findUniqueOrThrow({
     where: { id: user.id },
     select: {

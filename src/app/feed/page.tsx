@@ -6,7 +6,7 @@ import { SiteHeader } from "@/components/layout/SiteHeader";
 import { SiteFooter } from "@/components/layout/SiteFooter";
 import { ProductGrid } from "@/components/product/ProductGrid";
 import { PostCard } from "@/components/vendor/PostCard";
-import { currentUser } from "@/lib/auth";
+import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { cardSelect } from "@/lib/queries";
 
@@ -24,7 +24,7 @@ export const metadata: Metadata = {
  * be a timeline.
  */
 export default async function FeedPage() {
-  const user = await currentUser();
+  const user = await requireUser();
   if (!user) redirect("/signin?next=/feed");
 
   const follows = await db.follow.findMany({

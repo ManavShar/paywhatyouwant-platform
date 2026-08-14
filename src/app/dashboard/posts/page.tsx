@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Trash2 } from "lucide-react";
-import { currentUser } from "@/lib/auth";
+import { requireVendor } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PostComposer } from "@/components/vendor/PostComposer";
 import { PostCard } from "@/components/vendor/PostCard";
@@ -10,7 +10,7 @@ import { formatCount } from "@/lib/utils";
 export const metadata: Metadata = { title: "Updates" };
 
 export default async function VendorPostsPage() {
-  const user = (await currentUser())!;
+  const user = await requireVendor();
 
   const [posts, me] = await Promise.all([
     db.vendorPost.findMany({

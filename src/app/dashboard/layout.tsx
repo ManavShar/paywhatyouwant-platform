@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { UserRole } from "@prisma/client";
-import { currentUser } from "@/lib/auth";
+import { requireUser } from "@/lib/auth";
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import { DashboardNav } from "@/components/vendor/DashboardNav";
 
@@ -16,7 +16,7 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const user = await currentUser();
+  const user = await requireUser();
   if (!user) redirect("/signin?next=/dashboard");
 
   // Buyers have accounts too; the dashboard is only for people selling.

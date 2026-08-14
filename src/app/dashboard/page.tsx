@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { Plus } from "lucide-react";
-import { currentUser } from "@/lib/auth";
+import { requireVendor } from "@/lib/auth";
 import { getVendorStats, getMonthlyEarnings } from "@/lib/vendor-queries";
 import { EarningsChart } from "@/components/vendor/EarningsChart";
 import { StatTile } from "@/components/vendor/StatTile";
@@ -10,7 +10,7 @@ import { formatCount, formatMoney } from "@/lib/utils";
 export const metadata: Metadata = { title: "Dashboard" };
 
 export default async function DashboardOverview() {
-  const user = (await currentUser())!; // layout guarantees a vendor here
+  const user = await requireVendor(); // layout guarantees a vendor here
 
   const [stats, monthly] = await Promise.all([
     getVendorStats(user.id),

@@ -3,7 +3,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { Plus } from "lucide-react";
 import { ProductStatus } from "@prisma/client";
-import { currentUser } from "@/lib/auth";
+import { requireVendor } from "@/lib/auth";
 import { getVendorProducts } from "@/lib/vendor-queries";
 import { CATEGORY_BY_VALUE } from "@/lib/taxonomy";
 import { formatPrice, cn, formatMoney } from "@/lib/utils";
@@ -16,7 +16,7 @@ export default async function VendorProductsPage(
   const sp = await props.searchParams;
   const justCreated = sp.created === "1";
 
-  const user = (await currentUser())!;
+  const user = await requireVendor();
   const products = await getVendorProducts(user.id);
 
   return (

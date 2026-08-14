@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { currentUser } from "@/lib/auth";
+import { requireUser } from "@/lib/auth";
 import { storeUpload, extensionOf, ALLOWED_IMAGE, MAX_UPLOAD_BYTES } from "@/lib/storage";
 
 export type ProfileState = { error?: string; ok?: boolean } | undefined;
@@ -20,7 +20,7 @@ export async function updateProfile(
   _prev: ProfileState,
   formData: FormData,
 ): Promise<ProfileState> {
-  const user = await currentUser();
+  const user = await requireUser();
   if (!user) return { error: "You need to be signed in." };
 
   const parsed = schema.safeParse({

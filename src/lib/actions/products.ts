@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { Category, Licence, ProductStatus, UserRole } from "@prisma/client";
 import { db } from "@/lib/db";
-import { currentUser } from "@/lib/auth";
+import { requireUser } from "@/lib/auth";
 import { slugify, parsePriceToCents } from "@/lib/utils";
 import {
   storeUpload,
@@ -38,7 +38,7 @@ export async function createProduct(
   _prev: ProductFormState,
   formData: FormData,
 ): Promise<ProductFormState> {
-  const user = await currentUser();
+  const user = await requireUser();
   if (!user || user.role === UserRole.BUYER) {
     return { error: "You need a creator account to upload." };
   }

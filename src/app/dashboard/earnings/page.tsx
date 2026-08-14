@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { currentUser } from "@/lib/auth";
+import { requireVendor } from "@/lib/auth";
 import { getVendorStats, getMonthlyEarnings } from "@/lib/vendor-queries";
 import { EarningsChart } from "@/components/vendor/EarningsChart";
 import { StatTile } from "@/components/vendor/StatTile";
@@ -8,7 +8,7 @@ import { formatMoney } from "@/lib/utils";
 export const metadata: Metadata = { title: "Earnings" };
 
 export default async function EarningsPage() {
-  const user = (await currentUser())!;
+  const user = await requireVendor();
   const [stats, monthly] = await Promise.all([
     getVendorStats(user.id),
     getMonthlyEarnings(user.id),

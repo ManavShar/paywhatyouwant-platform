@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
@@ -85,10 +86,60 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   },
 });
 
-/** The signed-in user, or null. Safe to call from any server component. */
+/**
+ * The signed-in user as described by their session token.
+ *
+ * Cheap — no database round trip — but the token is a *snapshot* taken at
+ * sign-in. It keeps asserting whatever was true then, so it must not be the
+ * last word on anything that can change or be revoked. Use it for cosmetic
+ * decisions (which links the header shows) and `requireUser` for the rest.
+ */
 export async function currentUser() {
   const session = await auth();
   return session?.user ?? null;
+}
+
+/**
+ * The signed-in user, verified against the database.
+ *
+ * Returns null if the account no longer exists. This matters because sessions
+ * here are JWTs: deleting or suspending an account does not invalidate a token
+ * that was already issued, so a removed user would otherwise keep access until
+ * it expired — up to 30 days. Verified during testing, where an account
+ * deleted from the database went on authenticating happily.
+ *
+ * It also returns the *current* role rather than the one baked into the token,
+ * so a creator who was upgraded from buyer does not have to sign out and back
+ * in before the dashboard lets them in.
+ *
+ * Use this anywhere access is granted or data is written.
+ */
+export async function requireUser() {
+  const session = await auth();
+  if (!session?.user?.id) return null;
+
+  const user = await db.user.findUnique({
+    where: { id: session.user.id },
+    select: { id: true, email: true, username: true, name: true, role: true },
+  });
+
+  return user;
+}
+
+/**
+ * The signed-in creator, or a redirect.
+ *
+ * Dashboard pages used to write `(await requireUser())!`, trusting the layout
+ * guard to have already redirected. That assertion is a lie: a layout and the
+ * page beneath it are evaluated together, so a rejected user reached the page
+ * body and it crashed on a null dereference instead of redirecting. Each page
+ * asks for itself, and the redirect happens wherever the answer is no.
+ */
+export async function requireVendor() {
+  const user = await requireUser();
+  if (!user) redirect("/signin?next=/dashboard");
+  if (user.role === UserRole.BUYER) redirect("/sell");
+  return user;
 }
 
 export async function hashPassword(plain: string) {

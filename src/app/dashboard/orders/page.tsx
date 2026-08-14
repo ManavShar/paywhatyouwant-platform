@@ -1,13 +1,13 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { currentUser } from "@/lib/auth";
+import { requireVendor } from "@/lib/auth";
 import { getVendorOrders } from "@/lib/vendor-queries";
 import { formatPrice, formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Orders" };
 
 export default async function VendorOrdersPage() {
-  const user = (await currentUser())!;
+  const user = await requireVendor();
   const orders = await getVendorOrders(user.id);
 
   return (

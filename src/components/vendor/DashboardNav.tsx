@@ -10,6 +10,7 @@ import {
   TrendingUp,
   UserRound,
   MessageSquare,
+  Banknote,
   ExternalLink,
   LogOut,
 } from "lucide-react";
@@ -32,6 +33,7 @@ const ITEMS = [
   { href: "/dashboard/posts", label: "Updates", icon: MessageSquare },
   { href: "/dashboard/earnings", label: "Earnings", icon: TrendingUp },
   { href: "/dashboard/orders", label: "Orders", icon: Receipt },
+  { href: "/dashboard/payouts", label: "Payouts", icon: Banknote },
   { href: "/dashboard/profile", label: "Profile", icon: UserRound },
 ];
 

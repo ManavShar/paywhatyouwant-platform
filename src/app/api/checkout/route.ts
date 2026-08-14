@@ -126,6 +126,10 @@ export async function POST(request: Request) {
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
     customer_email: email,
+    // Tags sessions from this flow so they can be compared in the Stripe
+    // Dashboard. Fixed label, fixed random suffix — it identifies the
+    // integration, so it must not change per request.
+    integration_identifier: "pwyw_checkout_qkzrmtvd",
     line_items: [
       {
         quantity: 1,

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { UserRole } from "@prisma/client";
 import { db } from "@/lib/db";
-import { currentUser } from "@/lib/auth";
+import { requireUser } from "@/lib/auth";
 import { storeUpload, extensionOf, ALLOWED_IMAGE, MAX_UPLOAD_BYTES } from "@/lib/storage";
 
 /**
@@ -27,7 +27,7 @@ export type FollowResult = { following: boolean; error?: string };
  * actually in the table rather than from what the client claims.
  */
 export async function toggleFollow(username: string): Promise<FollowResult> {
-  const me = await currentUser();
+  const me = await requireUser();
   if (!me) return { following: false, error: "Sign in to follow creators." };
 
   const target = await db.user.findUnique({
@@ -83,7 +83,7 @@ export async function toggleFollow(username: string): Promise<FollowResult> {
 }
 
 export async function isFollowing(username: string): Promise<boolean> {
-  const me = await currentUser();
+  const me = await requireUser();
   if (!me) return false;
   const target = await db.user.findUnique({
     where: { username },
@@ -120,7 +120,7 @@ export async function createPost(
   _prev: PostState,
   formData: FormData,
 ): Promise<PostState> {
-  const me = await currentUser();
+  const me = await requireUser();
   if (!me || me.role === UserRole.BUYER) {
     return { error: "You need a creator account to post." };
   }
@@ -155,7 +155,7 @@ export async function createPost(
 }
 
 export async function deletePost(postId: string) {
-  const me = await currentUser();
+  const me = await requireUser();
   if (!me) return;
 
   // Scope the delete to the author rather than checking ownership first and
