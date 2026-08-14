@@ -6,8 +6,11 @@ import { SiteHeader } from "@/components/layout/SiteHeader";
 import { SiteFooter } from "@/components/layout/SiteFooter";
 import { ProductGrid } from "@/components/product/ProductGrid";
 import { db } from "@/lib/db";
+import { isFollowing } from "@/lib/actions/social";
+import { FollowButton } from "@/components/vendor/FollowButton";
+import { PostCard } from "@/components/vendor/PostCard";
 import { cardSelect } from "@/lib/queries";
-import { formatCount } from "@/lib/utils";
+
 
 async function getVendor(username: string) {
   return db.user.findUnique({
@@ -57,6 +60,7 @@ export default async function VendorPage(
   const vendor = await getVendor(username);
   if (!vendor) notFound();
 
+  const following = await isFollowing(username);
   const name = vendor.name || vendor.username;
 
   return (
@@ -93,12 +97,6 @@ export default async function VendorPage(
                 </strong>{" "}
                 {vendor.productCount === 1 ? "item" : "items"}
               </span>
-              <span>
-                <strong className="font-semibold text-ink">
-                  {formatCount(vendor.followerCount)}
-                </strong>{" "}
-                followers
-              </span>
               {vendor.vendorSince && (
                 <span>
                   Joined{" "}
@@ -117,16 +115,25 @@ export default async function VendorPage(
             )}
           </div>
 
-          {/* Follow is wired up in the social phase; rendered here so the
-              layout is settled and the affordance is discoverable. */}
-          <button
-            type="button"
-            disabled
-            className="h-11 shrink-0 rounded-control border border-hairline-strong px-5 text-sm font-semibold text-ink-muted disabled:opacity-60"
-          >
-            Follow
-          </button>
+          <FollowButton
+            username={vendor.username}
+            initialFollowing={following}
+            initialCount={vendor.followerCount}
+          />
         </header>
+
+        {vendor.posts.length > 0 && (
+          <section className="mt-10">
+            <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-ink-subtle">
+              Updates
+            </h2>
+            <div className="max-w-2xl space-y-3">
+              {vendor.posts.map((post) => (
+                <PostCard key={post.id} post={post} />
+              ))}
+            </div>
+          </section>
+        )}
 
         <section className="mt-10">
           {vendor.products.length > 0 ? (

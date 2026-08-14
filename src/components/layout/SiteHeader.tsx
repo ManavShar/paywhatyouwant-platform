@@ -17,8 +17,11 @@ import { cn } from "@/lib/utils";
  * Both are primary targets, so both are designed rather than derived.
  */
 export function SiteHeader({ showSearch = true }: { showSearch?: boolean }) {
-  const { status } = useSession();
+  const { data: session, status } = useSession();
   const signedIn = status === "authenticated";
+  // Buyers have accounts but no dashboard — offering them one links straight
+  // to a redirect. Branch on role, not merely on being signed in.
+  const isVendor = signedIn && session?.user?.role !== "BUYER";
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
 
@@ -47,17 +50,34 @@ export function SiteHeader({ showSearch = true }: { showSearch?: boolean }) {
           {signedIn ? (
             <>
               <Link
-                href="/dashboard"
+                href="/feed"
                 className="rounded-control px-3 py-2 text-sm font-semibold text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink"
               >
-                Dashboard
+                Following
               </Link>
-              <Link
-                href="/dashboard/products/new"
-                className="ml-1 rounded-control bg-brand px-4 py-2 text-sm font-semibold text-ink-inverse transition-colors hover:bg-brand-hover"
-              >
-                Add product
-              </Link>
+              {isVendor ? (
+                <>
+                  <Link
+                    href="/dashboard"
+                    className="rounded-control px-3 py-2 text-sm font-semibold text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink"
+                  >
+                    Dashboard
+                  </Link>
+                  <Link
+                    href="/dashboard/products/new"
+                    className="ml-1 rounded-control bg-brand px-4 py-2 text-sm font-semibold text-ink-inverse transition-colors hover:bg-brand-hover"
+                  >
+                    Add product
+                  </Link>
+                </>
+              ) : (
+                <Link
+                  href="/sell"
+                  className="ml-1 rounded-control bg-brand px-4 py-2 text-sm font-semibold text-ink-inverse transition-colors hover:bg-brand-hover"
+                >
+                  Start selling
+                </Link>
+              )}
             </>
           ) : (
             <>
@@ -135,19 +155,38 @@ export function SiteHeader({ showSearch = true }: { showSearch?: boolean }) {
           {signedIn ? (
             <>
               <Link
-                href="/dashboard"
+                href="/feed"
                 onClick={() => setMenuOpen(false)}
                 className="block rounded-control px-2 py-3 text-[0.9375rem] font-medium hover:bg-surface-hover"
               >
-                Dashboard
+                Following
               </Link>
-              <Link
-                href="/dashboard/products/new"
-                onClick={() => setMenuOpen(false)}
-                className="mt-2 block rounded-control bg-brand px-2 py-3 text-center text-[0.9375rem] font-semibold text-ink-inverse"
-              >
-                Add product
-              </Link>
+              {isVendor ? (
+                <>
+                  <Link
+                    href="/dashboard"
+                    onClick={() => setMenuOpen(false)}
+                    className="block rounded-control px-2 py-3 text-[0.9375rem] font-medium hover:bg-surface-hover"
+                  >
+                    Dashboard
+                  </Link>
+                  <Link
+                    href="/dashboard/products/new"
+                    onClick={() => setMenuOpen(false)}
+                    className="mt-2 block rounded-control bg-brand px-2 py-3 text-center text-[0.9375rem] font-semibold text-ink-inverse"
+                  >
+                    Add product
+                  </Link>
+                </>
+              ) : (
+                <Link
+                  href="/sell"
+                  onClick={() => setMenuOpen(false)}
+                  className="mt-2 block rounded-control bg-brand px-2 py-3 text-center text-[0.9375rem] font-semibold text-ink-inverse"
+                >
+                  Start selling
+                </Link>
+              )}
             </>
           ) : (
             <>

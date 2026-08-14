@@ -9,6 +9,7 @@ import {
   Receipt,
   TrendingUp,
   UserRound,
+  MessageSquare,
   ExternalLink,
   LogOut,
 } from "lucide-react";
@@ -28,6 +29,7 @@ const ITEMS = [
   { href: "/dashboard", label: "Overview", icon: LayoutGrid, exact: true },
   { href: "/dashboard/products", label: "Products", icon: Package },
   { href: "/dashboard/products/new", label: "Add product", icon: Plus },
+  { href: "/dashboard/posts", label: "Updates", icon: MessageSquare },
   { href: "/dashboard/earnings", label: "Earnings", icon: TrendingUp },
   { href: "/dashboard/orders", label: "Orders", icon: Receipt },
   { href: "/dashboard/profile", label: "Profile", icon: UserRound },
