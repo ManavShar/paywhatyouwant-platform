@@ -11,6 +11,24 @@ export function cn(...inputs: ClassValue[]) {
    places a conversion is allowed to happen.
 --------------------------------------------------------------------------- */
 
+/**
+ * An amount of money, always rendered as a number.
+ *
+ * Use this for totals, earnings and fees. `formatPrice` renders 0 as "Free",
+ * which is right when asking someone to pay but wrong on a dashboard — a
+ * vendor whose earnings are zero should see "$0", not be told their earnings
+ * are "Free".
+ */
+export function formatMoney(cents: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: cents % 100 === 0 ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(cents / 100);
+}
+
+/** A price offered to a buyer. Zero reads as "Free" — that is the offer. */
 export function formatPrice(cents: number): string {
   if (cents === 0) return "Free";
   return new Intl.NumberFormat("en-US", {

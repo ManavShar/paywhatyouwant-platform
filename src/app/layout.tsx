@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
+import { AuthSessionProvider } from "@/components/auth/SessionProvider";
 
 // Geometric sans, chosen to sit naturally beside the rounded geometry of the
 // logo mark. One family for everything — no secondary display face.
@@ -33,7 +34,9 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" className={jakarta.variable}>
-      <body className="min-h-dvh bg-canvas text-ink">{children}</body>
+      <body className="min-h-dvh bg-canvas text-ink">
+        <AuthSessionProvider>{children}</AuthSessionProvider>
+      </body>
     </html>
   );
 }

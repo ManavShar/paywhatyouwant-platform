@@ -12,7 +12,8 @@
     "migrate:import": "tsx scripts/migrate-wordpress.ts",
     "db:up": "docker compose up -d",
     "db:studio": "prisma studio",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "seed:demo-sales": "tsx scripts/seed-demo-sales.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.3",
