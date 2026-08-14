@@ -146,12 +146,29 @@ export default async function ProductPage(props: PageProps<"/product/[slug]">) {
 
           {/* ---- the decision ---------------------------------------- */}
           <aside className="lg:sticky lg:top-24 lg:self-start">
-            <PurchasePanel
-              productSlug={product.slug}
-              suggestedPriceCents={product.suggestedPriceCents}
-              minimumPriceCents={product.minimumPriceCents}
-              creatorName={creatorName}
-            />
+            {paidFile ? (
+              <PurchasePanel
+                productSlug={product.slug}
+                suggestedPriceCents={product.suggestedPriceCents}
+                minimumPriceCents={product.minimumPriceCents}
+                creatorName={creatorName}
+              />
+            ) : (
+              // Some works came across from WordPress with only a streamable
+              // preview and nothing to hand over — most of the podcast back
+              // catalogue is like this. Showing a price control here would
+              // take someone's money for a file that does not exist, so the
+              // panel says what the work actually is instead.
+              <div className="rounded-card border border-hairline bg-surface p-5">
+                <p className="text-lg font-bold tracking-tight text-ink">
+                  {isAudio ? "Free to listen" : "Free to view"}
+                </p>
+                <p className="mt-2 text-sm leading-relaxed text-ink-muted">
+                  {creatorName} is sharing this one openly — there is no file to
+                  download{isAudio ? ", just press play above" : ""}.
+                </p>
+              </div>
+            )}
 
             <dl className="mt-5 space-y-3 rounded-card border border-hairline bg-surface p-5 text-sm">
               <div className="flex items-start gap-3">

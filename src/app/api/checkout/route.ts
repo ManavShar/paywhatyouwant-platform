@@ -36,10 +36,22 @@ export async function POST(request: Request) {
 
   const product = await db.product.findFirst({
     where: { slug: productSlug, status: ProductStatus.PUBLISHED },
-    include: { vendor: true },
+    include: { vendor: true, files: { where: { isPreview: false }, take: 1 } },
   });
   if (!product) {
     return NextResponse.json({ error: "Product not found" }, { status: 404 });
+  }
+
+  // Nothing to deliver, so nothing to sell. Several migrated works are
+  // stream-only: the audio is the preview and no paid file was ever attached.
+  // Checkout used to succeed on those and the download then 404'd, which is
+  // taking money for nothing. The product page hides the price control, and
+  // this is the guard behind it.
+  if (product.files.length === 0) {
+    return NextResponse.json(
+      { error: "This work is free — there is no file to buy." },
+      { status: 409 },
+    );
   }
 
   // Trust the creator's floor, never the client's arithmetic.
