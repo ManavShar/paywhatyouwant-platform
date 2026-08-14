@@ -40,7 +40,7 @@ export function SiteFooter() {
 
         <div className="mt-12 flex flex-col gap-2 border-t border-hairline pt-6 text-xs text-ink-subtle sm:flex-row sm:items-center sm:justify-between">
           <p>© {new Date().getFullYear()} Paywhatyouwant.io</p>
-          <p>Founded by Max Rangeley · Based in England</p>
+          <p>Founded by Max Rangeley</p>
         </div>
       </div>
     </footer>
