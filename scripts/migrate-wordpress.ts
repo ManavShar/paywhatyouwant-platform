@@ -105,6 +105,8 @@ type Report = {
   productsFlagged: { title: string; vendor: string; reason: string }[];
   productsDropped: { title: string; vendor: string; reason: string }[];
   missingMedia: { product: string; url: string }[];
+  upgradedToOriginal: { product: string; from: string; to: string }[];
+  noOriginalAvailable: string[];
 };
 
 async function main() {
@@ -125,6 +127,8 @@ async function main() {
     productsFlagged: [],
     productsDropped: [],
     missingMedia: [],
+    upgradedToOriginal: [],
+    noOriginalAvailable: [],
   };
 
   /** True when the file actually made it onto local disk. */
@@ -135,6 +139,28 @@ async function main() {
   };
 
   const attachmentsById = new Map(manifest.attachments.map((a) => [a.id, a]));
+
+  // WordPress downscales any upload over 2560px and serves the "-scaled" copy,
+  // which is what EDD recorded as the purchasable file. A buyer paying for a
+  // photograph should get what the photographer actually uploaded, so paid
+  // files resolve to the original wherever we managed to fetch one.
+  // Covers and previews deliberately keep using the smaller copy.
+  const originalByUrl = new Map<string, string>();
+  for (const a of manifest.attachments) {
+    if (a.originalUrl) originalByUrl.set(a.url, a.originalUrl);
+  }
+
+  const resolvePaidSource = (url: string): { url: string; upgraded: boolean } => {
+    const mapped = originalByUrl.get(url);
+    if (mapped && isLocal(mapped)) return { url: mapped, upgraded: true };
+
+    // Some product files point at a "-scaled" URL that is not registered as an
+    // attachment. Derive the original name and use it only if it really landed.
+    const derived = url.replace(/-scaled(\.[a-z0-9]+)$/i, "$1");
+    if (derived !== url && isLocal(derived)) return { url: derived, upgraded: true };
+
+    return { url, upgraded: false };
+  };
 
   // ---- users -------------------------------------------------------------
   // Only users who actually uploaded something become vendors; the export
@@ -302,19 +328,35 @@ async function main() {
         report.missingMedia.push({ product: product.title, url: file.url });
         continue;
       }
-      const ext = extOf(file.name);
-      const key = mediaState[file.url].key ?? storageKeyFor(file.url);
+      const source = resolvePaidSource(file.url);
+      if (source.upgraded) {
+        report.upgradedToOriginal.push({
+          product: product.title,
+          from: file.url.split("/").pop() ?? file.url,
+          to: source.url.split("/").pop() ?? source.url,
+        });
+      } else if (/-scaled\.[a-z0-9]+$/i.test(file.url)) {
+        report.noOriginalAvailable.push(product.title);
+      }
+
+      // Name the file after whichever variant is actually delivered, so the
+      // buyer's download does not claim to be something it is not.
+      const fileName = source.upgraded
+        ? decodeURIComponent(source.url.split("/").pop() ?? file.name)
+        : file.name;
+      const ext = extOf(fileName);
+      const key = mediaState[source.url]?.key ?? storageKeyFor(source.url);
       const full = path.join(STORAGE, key);
       await db.productFile.create({
         data: {
           productId: saved.id,
           isPreview: false,
-          fileName: file.name,
+          fileName,
           storageKey: key,
           extension: ext,
           mimeType: ext ? MIME_BY_EXT[ext] : undefined,
           sizeBytes: fs.existsSync(full) ? fs.statSync(full).size : null,
-          legacySourceUrl: file.url,
+          legacySourceUrl: source.url,
           downloadedAt: new Date(),
         },
       });
@@ -391,6 +433,7 @@ async function main() {
     held for review  ${report.productsFlagged.length}
     dropped          ${report.productsDropped.length}
   media missing      ${report.missingMedia.length}
+  files upgraded     ${report.upgradedToOriginal.length}  (now full resolution)
 
   → migration/migration-report.md`);
 }
@@ -447,6 +490,33 @@ function writeReport(report: Report, manifest: WpManifest) {
       lines.push(`- \`${u.login}\` — ${u.reason}`);
     }
     lines.push("");
+  }
+
+  if (report.upgradedToOriginal.length || report.noOriginalAvailable.length) {
+    lines.push("## Download quality", "");
+    lines.push(
+      "WordPress automatically downscales uploads over 2560px and serves a",
+      '`-scaled` copy. The old site sold that downscale. These products now',
+      "deliver the creator's original file instead.",
+      "",
+    );
+    lines.push(
+      `**${report.upgradedToOriginal.length} paid files upgraded to full resolution.**`,
+      "",
+    );
+    for (const u of report.upgradedToOriginal.slice(0, 60)) {
+      lines.push(`- ${u.product} — \`${u.from}\` → \`${u.to}\``);
+    }
+    if (report.upgradedToOriginal.length > 60) {
+      lines.push(`- …and ${report.upgradedToOriginal.length - 60} more`);
+    }
+    lines.push("");
+    if (report.noOriginalAvailable.length) {
+      lines.push(
+        `${report.noOriginalAvailable.length} downscaled files had no recoverable original and ship unchanged.`,
+        "",
+      );
+    }
   }
 
   if (report.missingMedia.length) {

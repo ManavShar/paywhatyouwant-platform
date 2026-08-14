@@ -13,7 +13,17 @@ import { phpUnserialize, asArray, type PhpValue } from "./php-unserialize";
 
 export type WpAttachment = {
   id: number;
+  /**
+   * WordPress's serving URL. For any upload over 2560px this is the
+   * auto-downscaled "-scaled" copy, NOT what the creator uploaded.
+   */
   url: string;
+  /**
+   * The creator's untouched original, read from <guid>, present only when
+   * WordPress downscaled the upload. On a photography marketplace this is the
+   * file a paying buyer should actually receive.
+   */
+  originalUrl?: string;
   title: string;
   mimeType?: string;
 };
@@ -64,6 +74,17 @@ export type WpManifest = {
   users: WpUser[];
   products: WpProduct[];
   attachments: WpAttachment[];
+  /**
+   * Images referenced inside description HTML. Archived so they survive the
+   * old host, even though descriptions currently render as plain text.
+   */
+  embeddedUrls: string[];
+  /**
+   * Other URLs the export references for the same assets — rotated variants
+   * and legacy multisite paths. Archived so nothing is lost when the old host
+   * goes away, but never substituted for a product's file.
+   */
+  altUrls: string[];
 };
 
 // ----------------------------------------------------------------- helpers --
@@ -142,6 +163,19 @@ function categoriesOf(item: RawNode, domain: string): string[] {
     .filter(Boolean);
 }
 
+/** True only for assets hosted on the old paywhatyouwant.io site itself. */
+function isOldSiteUrl(url: string): boolean {
+  try {
+    return new URL(url).hostname.endsWith("paywhatyouwant.io");
+  } catch {
+    return false;
+  }
+}
+
+/** Any file living under the old site's uploads directory. */
+const UPLOADS_URL_RE =
+  /https?:\/\/paywhatyouwant\.io\/wp-content\/uploads\/[^\s"'<>)\]]+/g;
+
 // ------------------------------------------------------------------ parse --
 
 export function parseWordpressExport(
@@ -180,6 +214,8 @@ export function parseWordpressExport(
   const items = toArray(channel.item as RawNode | RawNode[]);
   const attachments: WpAttachment[] = [];
   const products: WpProduct[] = [];
+  const embeddedUrls = new Set<string>();
+  const altUrls = new Set<string>();
 
   for (const item of items) {
     const postType = text(item["wp:post_type"]);
@@ -188,7 +224,41 @@ export function parseWordpressExport(
     if (postType === "attachment") {
       const url = text(item["wp:attachment_url"]);
       if (url) {
-        attachments.push({ id, url, title: decodeEntities(text(item.title)) });
+        // WordPress 5.3+ downscales large uploads and points attachment_url at
+        // the "-scaled" copy, leaving the original addressable at the guid.
+        //
+        // Only that exact relationship counts as an "original", and it is
+        // checked by construction: strip "-scaled" from the served URL and the
+        // guid must match. Other guid mismatches in this export are NOT higher
+        // quality and must never be substituted for a paid download —
+        //   "...-rotated.jpg" vs "....jpg"  — the guid is the *un*-rotated
+        //      file, so delivering it would hand the buyer a sideways image;
+        //   "sites/7/edd/..."               — legacy multisite path, same file.
+        // Those are archived via altUrls instead, so nothing is lost.
+        const guid = text(item.guid);
+        const deScaled = url.replace(/-scaled(\.[a-z0-9]+)$/i, "$1");
+        const isTrueOriginal =
+          deScaled !== url && guid === deScaled;
+
+        // Host check matters: some guids point at the Mayosis theme's demo
+        // site, left over from when its sample content was imported. That is
+        // someone else's server and not our content to scrape.
+        if (
+          guid &&
+          guid !== url &&
+          guid.includes("/uploads/") &&
+          !isTrueOriginal &&
+          isOldSiteUrl(guid)
+        ) {
+          altUrls.add(guid);
+        }
+
+        attachments.push({
+          id,
+          url,
+          originalUrl: isTrueOriginal ? guid : undefined,
+          title: decodeEntities(text(item.title)),
+        });
       }
       continue;
     }
@@ -196,6 +266,13 @@ export function parseWordpressExport(
     if (postType !== "download") continue;
 
     const meta = metaMap(item);
+
+    // Images pasted into the description body are real uploads that are not
+    // registered against this product anywhere else.
+    const descriptionHtml = text(item["content:encoded"]);
+    for (const match of descriptionHtml.matchAll(UPLOADS_URL_RE)) {
+      embeddedUrls.add(match[0].replace(/[.,;]+$/, ""));
+    }
 
     // EDD's "custom pricing" default is the suggested price shown to buyers.
     // Fall back to the plain edd_price when it's absent.
@@ -276,5 +353,7 @@ export function parseWordpressExport(
     users,
     products,
     attachments,
+    embeddedUrls: [...embeddedUrls],
+    altUrls: [...altUrls],
   };
 }

@@ -39,7 +39,10 @@ const MAX_ATTEMPTS = 3;
 // cost of waiting is a slow script, the cost of giving up is a lost master.
 const TIMEOUT_MS = 900_000;
 
-type Status = "ok" | "failed";
+// "gone" means the server says the file no longer exists (404) or refuses to
+// serve it (403). Retrying those forever costs a request per run and muddies
+// the summary, so they are recorded as permanent and skipped afterwards.
+type Status = "ok" | "failed" | "gone";
 type StateEntry = { status: Status; key?: string; bytes?: number; error?: string };
 type State = Record<string, StateEntry>;
 
@@ -86,8 +89,10 @@ async function downloadOne(url: string): Promise<StateEntry> {
 
       if (!res.ok) {
         lastError = `HTTP ${res.status}`;
-        // 404 will not improve with retries.
-        if (res.status === 404 || res.status === 403) break;
+        // Neither improves with retrying, now or on any future run.
+        if (res.status === 404 || res.status === 403) {
+          return { status: "gone", key, error: lastError };
+        }
         await sleep(500 * attempt);
         continue;
       }
@@ -129,15 +134,27 @@ async function main() {
   // Every URL worth having: attachment media (covers and previews) plus the
   // purchasable product files, which are not always registered as attachments.
   const urls = new Set<string>();
-  for (const a of manifest.attachments) if (a.url) urls.add(a.url);
+  for (const a of manifest.attachments) {
+    if (a.url) urls.add(a.url);
+    // The full-resolution original sitting behind WordPress's "-scaled" copy.
+    if (a.originalUrl) urls.add(a.originalUrl);
+  }
   for (const p of manifest.products) for (const f of p.files) if (f.url) urls.add(f.url);
+  // Images embedded in description HTML, registered nowhere else.
+  for (const u of manifest.embeddedUrls ?? []) urls.add(u);
+  // Rotated variants and legacy multisite paths — archived, never served.
+  for (const u of manifest.altUrls ?? []) urls.add(u);
 
   const all = [...urls].filter((u) => /^https?:\/\//i.test(u));
   const state = loadState();
 
-  const pending = all.filter((u) => state[u]?.status !== "ok");
+  const pending = all.filter(
+    (u) => state[u]?.status !== "ok" && state[u]?.status !== "gone",
+  );
+  const goneCount = all.filter((u) => state[u]?.status === "gone").length;
   console.log(
-    `${all.length} media files referenced — ${all.length - pending.length} already local, ${pending.length} to fetch.\n`,
+    `${all.length} referenced, ${all.length - pending.length - goneCount} already local, ` +
+      `${goneCount} permanently gone, ${pending.length} to fetch.\n`,
   );
 
   let done = 0;
@@ -152,9 +169,12 @@ async function main() {
       state[url] = result;
 
       done += 1;
-      if (result.status === "ok") bytes += result.bytes ?? 0;
-      else {
-        failed += 1;
+      if (result.status === "ok") {
+        bytes += result.bytes ?? 0;
+      } else {
+        // A "gone" file is reported but not counted as a failure — it is a
+        // fact about the old server, not something a retry could fix.
+        if (result.status === "failed") failed += 1;
         console.warn(`  ! ${result.error}  ${url}`);
       }
 
@@ -174,13 +194,19 @@ async function main() {
   saveState(state);
 
   const okCount = all.filter((u) => state[u]?.status === "ok").length;
+  const gone = all.filter((u) => state[u]?.status === "gone").length;
+  const stillFailing = all.length - okCount - gone;
+
   console.log(`
   downloaded   ${okCount}/${all.length}
   volume       ${(bytes / 1024 / 1024).toFixed(1)} MB this run
-  failed       ${all.length - okCount}
+  gone         ${gone}  (404/403 on the old server, unrecoverable)
+  failed       ${stillFailing}  (retryable)
   storage      ${STORAGE}`);
 
-  if (okCount < all.length) {
+  // Only a retryable failure is worth a non-zero exit. Files the old server
+  // has already deleted are a fact to report, not an error to act on.
+  if (stillFailing > 0) {
     console.log(`
   Some files did not transfer. Re-run this script to retry only those.
   Failures are listed in migration/media-state.json.`);
