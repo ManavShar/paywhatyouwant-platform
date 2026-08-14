@@ -1,0 +1,26 @@
+services:
+  db:
+    image: postgres:18-alpine
+    container_name: pwyw-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pwyw
+      POSTGRES_PASSWORD: pwyw_dev_password
+      POSTGRES_DB: pwyw
+    # 5433 on the host: the machine already runs a native PostgreSQL 18
+    # service on 5432 and we don't want to collide with it.
+    ports:
+      - "5433:5432"
+    # Postgres 18+ images store data in a major-version-specific subdirectory,
+    # so the mount belongs at /var/lib/postgresql rather than .../data.
+    # Mounting the old path makes the container crash-loop on startup.
+    volumes:
+      - pwyw_pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pwyw -d pwyw"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pwyw_pgdata:

@@ -1,0 +1,128 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+   Paywhatyouwant.io design tokens
+
+   The brief was specific: clean and white, so that product imagery carries all
+   the colour and nothing clashes with it. Every value here serves that.
+
+   Deliberately NO dark mode. A dark canvas fights photography and digital art,
+   which is the majority of the catalogue.
+--------------------------------------------------------------------------- */
+
+@theme {
+  /* Surfaces — white canvas, barely-there separation. */
+  --color-canvas: #ffffff;
+  --color-surface: #fafafa;
+  --color-surface-hover: #f4f4f5;
+  --color-hairline: #eaeaea;
+  --color-hairline-strong: #d6d6da;
+
+  /* Text — charcoal taken from the logo wordmark. */
+  --color-ink: #3d3d47;
+  --color-ink-muted: #6b6b76;
+  --color-ink-subtle: #9a9aa3;
+  --color-ink-inverse: #ffffff;
+
+  /* Accent — the green-to-blue gradient from the logo mark.
+     Used sparingly: primary actions, focus rings, active states. */
+  --color-brand-green: #4ca64c;
+  --color-brand-blue: #4a7ebb;
+  --color-brand: #479286;
+  --color-brand-hover: #3d8074;
+
+  /* Semantic */
+  --color-success: #2f855a;
+  --color-danger: #c53030;
+  --color-warning: #b7791f;
+
+  /* Type — one geometric sans throughout, echoing the logo's roundness. */
+  --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+
+  /* Radii — soft but not pill-shaped. */
+  --radius-card: 0.75rem;
+  --radius-control: 0.5rem;
+
+  /* Shadows — almost imperceptible; the hairline does most of the work. */
+  --shadow-card: 0 1px 2px rgb(61 61 71 / 0.04), 0 4px 12px rgb(61 61 71 / 0.06);
+  --shadow-lifted: 0 2px 4px rgb(61 61 71 / 0.06), 0 12px 28px rgb(61 61 71 / 0.10);
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Headings run tight; body copy runs open. */
+  h1, h2, h3, h4 {
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    font-weight: 700;
+  }
+
+  /* A single visible focus treatment everywhere, in the brand accent.
+     The entire purchase flow must be keyboard-traversable. */
+  :focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  ::selection {
+    background-color: color-mix(in srgb, var(--color-brand) 22%, transparent);
+  }
+}
+
+@layer utilities {
+  /* The logo gradient, for the mark and for occasional emphasis. */
+  .bg-brand-gradient {
+    background-image: linear-gradient(
+      135deg,
+      var(--color-brand-green) 0%,
+      var(--color-brand-blue) 100%
+    );
+  }
+
+  .text-brand-gradient {
+    background-image: linear-gradient(
+      135deg,
+      var(--color-brand-green) 0%,
+      var(--color-brand-blue) 100%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* CSS multi-column masonry. Chosen over a JS masonry library because it
+     needs no measurement pass, so images never jump on load. Column counts
+     are set per-breakpoint by the consuming component. */
+  .masonry {
+    column-gap: 1rem;
+  }
+
+  .masonry > * {
+    break-inside: avoid;
+    margin-bottom: 1rem;
+  }
+
+  /* Respect users who ask for less motion. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}

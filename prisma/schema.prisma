@@ -1,0 +1,377 @@
+// Paywhatyouwant.io — data model
+//
+// Design notes that matter:
+//  - Money is stored in integer CENTS everywhere. Never floats.
+//  - Every purchasable record keeps both the suggested price and what was
+//    actually paid; the gap between them is the most interesting number this
+//    platform produces and it must never be lost.
+//  - `legacyWpId` / `legacyWpLogin` let the WordPress import re-run idempotently.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Prisma 7 no longer accepts `url` here — the connection is supplied by the
+// driver adapter configured in prisma.config.ts and src/lib/db.ts.
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------- enums ----
+
+enum UserRole {
+  BUYER
+  VENDOR
+  ADMIN
+}
+
+enum Category {
+  MUSIC
+  PHOTOGRAPHY
+  PODCASTS
+  DIGITAL_ART
+  EBOOKS
+}
+
+/// Mirrors the licence values found in the WordPress export.
+enum Licence {
+  CREATIVE_COMMONS
+  CREATIVE_COMMONS_NO_DERIVS
+  ALL_RIGHTS_RESERVED
+  PUBLIC_DOMAIN
+}
+
+enum ProductStatus {
+  PUBLISHED
+  DRAFT
+  /// Imported but held back pending human review (test data, suspected spam).
+  FLAGGED
+}
+
+enum OrderStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+// ---------------------------------------------------------------- users ----
+
+model User {
+  id       String   @id @default(cuid())
+  email    String   @unique
+  /// Doubles as the vendor page slug: /vendor/<username>
+  username String   @unique
+  name     String?
+  role     UserRole @default(BUYER)
+
+  passwordHash String?
+  emailVerified DateTime?
+
+  bio       String?
+  avatarUrl String?
+  bannerUrl String?
+  website   String?
+  twitter   String?
+  instagram String?
+
+  /// Stripe Connect account, set once the vendor completes onboarding.
+  stripeAccountId       String? @unique
+  stripeOnboardingDone  Boolean @default(false)
+  /// Stripe Customer, for buyers.
+  stripeCustomerId      String? @unique
+
+  /// Denormalised for cheap rendering of profile and card views.
+  followerCount  Int @default(0)
+  followingCount Int @default(0)
+  productCount   Int @default(0)
+  /// Lifetime totals, in cents.
+  totalEarnings  Int @default(0)
+  totalSales     Int @default(0)
+  pageViews      Int @default(0)
+
+  vendorSince DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  /// WordPress import provenance.
+  legacyWpLogin String? @unique
+
+  products   Product[]
+  orders     Order[]
+  posts      VendorPost[]
+  reviews    Review[]
+  grants     DownloadGrant[]
+  followers  Follow[] @relation("Followed")
+  following  Follow[] @relation("Follower")
+  accounts   Account[]
+  sessions   Session[]
+
+  /// Affiliate system is deferred, but the relations exist now so that
+  /// enabling it later does not require migrating live order data.
+  referredBy   User?  @relation("Referral", fields: [referredById], references: [id])
+  referredById String?
+  referrals    User[] @relation("Referral")
+
+  @@index([role])
+  @@index([username])
+}
+
+// ------------------------------------------------------------- products ----
+
+model Product {
+  id          String        @id @default(cuid())
+  slug        String        @unique
+  title       String
+  description String        @db.Text
+  category    Category
+  licence     Licence       @default(ALL_RIGHTS_RESERVED)
+  status      ProductStatus @default(DRAFT)
+
+  /// The anchor shown pre-filled in the price control, in cents.
+  suggestedPriceCents Int @default(0)
+  /// Floor the buyer may not go below. 0 means genuinely free is allowed,
+  /// which is the default and the point of the whole platform.
+  minimumPriceCents   Int @default(0)
+
+  coverImageUrl String?
+  coverWidth    Int?
+  coverHeight   Int?
+  /// Tiny base64 placeholder for blur-up loading in the masonry grid.
+  blurDataUrl   String? @db.Text
+
+  vendor   User   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  vendorId String
+
+  /// Denormalised counters.
+  salesCount     Int @default(0)
+  earningsCents  Int @default(0)
+  viewCount      Int @default(0)
+  averageRating  Float?
+
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  /// WordPress import provenance, and why an import flagged this record.
+  legacyWpId   Int?    @unique
+  flagReason   String?
+
+  files      ProductFile[]
+  tags       TagsOnProducts[]
+  orderItems OrderItem[]
+  reviews    Review[]
+  grants     DownloadGrant[]
+
+  @@index([category, status, publishedAt])
+  @@index([vendorId, status])
+  @@index([status, publishedAt])
+}
+
+/// Both the paid asset and the free preview live here, distinguished by
+/// `isPreview`. Previews are what the embeddable widget and the streaming
+/// player are allowed to serve to anyone.
+model ProductFile {
+  id        String  @id @default(cuid())
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId String
+
+  isPreview Boolean @default(false)
+
+  fileName    String
+  /// Path within the configured storage driver, never a public URL.
+  storageKey  String
+  mimeType    String?
+  /// Bytes.
+  sizeBytes   Int?
+  extension   String?
+  /// Seconds, for audio previews.
+  durationSec Int?
+
+  /// Original URL on the WordPress host, kept so a failed media download
+  /// can be retried without re-parsing the XML.
+  legacySourceUrl String?
+  downloadedAt    DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([productId, isPreview])
+}
+
+model Tag {
+  id       String           @id @default(cuid())
+  slug     String           @unique
+  name     String
+  products TagsOnProducts[]
+}
+
+model TagsOnProducts {
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId String
+  tag       Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  tagId     String
+
+  @@id([productId, tagId])
+  @@index([tagId])
+}
+
+// --------------------------------------------------------------- orders ----
+
+model Order {
+  id     String      @id @default(cuid())
+  status OrderStatus @default(PENDING)
+
+  buyer   User?   @relation(fields: [buyerId], references: [id], onDelete: SetNull)
+  /// Null for guest checkout — buying must not require an account.
+  buyerId String?
+  /// Where the receipt and download link go for guests.
+  email   String?
+
+  totalPaidCents    Int @default(0)
+  platformFeeCents  Int @default(0)
+  vendorShareCents  Int @default(0)
+
+  stripeSessionId       String? @unique
+  stripePaymentIntentId String? @unique
+
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  items  OrderItem[]
+  grants DownloadGrant[]
+
+  @@index([buyerId, status])
+  @@index([status, createdAt])
+}
+
+model OrderItem {
+  id      String @id @default(cuid())
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId String
+
+  product   Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  productId String
+
+  /// What the buyer chose. May legitimately be 0.
+  pricePaidCents     Int
+  /// What was suggested at the moment of purchase. Snapshotted rather than
+  /// read through to Product, because vendors change their prices later and
+  /// that would silently rewrite history.
+  suggestedPriceCents Int
+
+  platformFeeCents Int @default(0)
+  vendorShareCents Int @default(0)
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+/// A signed, expiring right to download a specific file. Issued on completed
+/// order (including $0 orders) and re-issuable from the buyer's library.
+model DownloadGrant {
+  id    String @id @default(cuid())
+  token String @unique
+
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId String
+  order     Order?  @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  orderId   String?
+  user      User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId    String?
+  /// For guest purchases with no account.
+  email     String?
+
+  downloadCount Int      @default(0)
+  maxDownloads  Int      @default(10)
+  expiresAt     DateTime
+  createdAt     DateTime @default(now())
+
+  @@index([productId])
+  @@index([userId])
+}
+
+// --------------------------------------------------------------- social ----
+
+model Follow {
+  follower   User   @relation("Follower", fields: [followerId], references: [id], onDelete: Cascade)
+  followerId String
+  followed   User   @relation("Followed", fields: [followedId], references: [id], onDelete: Cascade)
+  followedId String
+
+  createdAt DateTime @default(now())
+
+  @@id([followerId, followedId])
+  @@index([followedId])
+}
+
+model VendorPost {
+  id       String @id @default(cuid())
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  authorId String
+
+  body     String  @db.Text
+  imageUrl String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([authorId, createdAt])
+}
+
+model Review {
+  id        String  @id @default(cuid())
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId String
+  author    User    @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  authorId  String
+
+  rating Int
+  body   String? @db.Text
+
+  createdAt DateTime @default(now())
+
+  /// One review per person per product.
+  @@unique([productId, authorId])
+  @@index([productId])
+}
+
+// ----------------------------------------------------------- auth.js ------
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
