@@ -139,7 +139,7 @@ export default async function HomePage() {
           <div className="mx-auto max-w-[1600px] px-4 py-16 sm:px-6">
             <div className="mx-auto max-w-3xl">
               <h2 className="text-center text-2xl font-extrabold tracking-tight sm:text-3xl">
-                What is Paywhatyouwant
+                What is <span className="text-brand">Paywhatyouwant</span>?
               </h2>
               <p className="mx-auto mt-3 max-w-xl text-center text-base leading-relaxed text-ink-muted">
                 A minute on how it works, from our founder.
