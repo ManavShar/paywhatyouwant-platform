@@ -5,6 +5,7 @@ import { SiteHeader } from "@/components/layout/SiteHeader";
 import { SiteFooter } from "@/components/layout/SiteFooter";
 import { SearchBar } from "@/components/layout/SearchBar";
 import { ProductGrid } from "@/components/product/ProductGrid";
+import { VideoIntro } from "@/components/home/VideoIntro";
 import { CATEGORIES } from "@/lib/taxonomy";
 import {
   getFeaturedProducts,
@@ -128,6 +129,26 @@ export default async function HomePage() {
           ) : (
             <EmptyCatalogue />
           )}
+        </section>
+
+        {/* Max's explainer from the old site. Placed below the wall for the
+            same reason as the creator pitch: someone who arrived to look at
+            work should be looking at work, and the explanation is there for
+            the people who scroll wanting one. */}
+        <section className="border-t border-hairline">
+          <div className="mx-auto max-w-[1600px] px-4 py-16 sm:px-6">
+            <div className="mx-auto max-w-3xl">
+              <h2 className="text-center text-2xl font-extrabold tracking-tight sm:text-3xl">
+                What is Paywhatyouwant
+              </h2>
+              <p className="mx-auto mt-3 max-w-xl text-center text-base leading-relaxed text-ink-muted">
+                A minute on how it works, from our founder.
+              </p>
+              <div className="mt-8">
+                <VideoIntro />
+              </div>
+            </div>
+          </div>
         </section>
 
         {/* The creator pitch lives here, below the browse experience, rather
