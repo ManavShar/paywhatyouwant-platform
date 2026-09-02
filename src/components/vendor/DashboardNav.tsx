@@ -11,6 +11,7 @@ import {
   UserRound,
   MessageSquare,
   Banknote,
+  Layers,
   ExternalLink,
   LogOut,
 } from "lucide-react";
@@ -30,6 +31,7 @@ const ITEMS = [
   { href: "/dashboard", label: "Overview", icon: LayoutGrid, exact: true },
   { href: "/dashboard/products", label: "Products", icon: Package },
   { href: "/dashboard/products/new", label: "Add product", icon: Plus },
+  { href: "/dashboard/albums", label: "Albums", icon: Layers },
   { href: "/dashboard/posts", label: "Updates", icon: MessageSquare },
   { href: "/dashboard/earnings", label: "Earnings", icon: TrendingUp },
   { href: "/dashboard/orders", label: "Orders", icon: Receipt },

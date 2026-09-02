@@ -2,7 +2,6 @@
 
 import { useOptimistic, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { useSession } from "next-auth/react";
 import { Check, Plus } from "lucide-react";
 import { toggleFollow } from "@/lib/actions/social";
 import { cn, formatCount } from "@/lib/utils";
@@ -23,13 +22,16 @@ export function FollowButton({
   username,
   initialFollowing,
   initialCount,
+  signedIn,
 }: {
   username: string;
   initialFollowing: boolean;
   initialCount: number;
+  /** Resolved on the server. Read from a client session it arrives late, and
+      until it does a signed-in follower is bounced to the sign-in page. */
+  signedIn: boolean;
 }) {
   const router = useRouter();
-  const { status } = useSession();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -46,7 +48,7 @@ export function FollowButton({
   );
 
   function onClick() {
-    if (status !== "authenticated") {
+    if (!signedIn) {
       router.push(`/signin?next=/vendor/${username}`);
       return;
     }

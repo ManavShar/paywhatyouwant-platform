@@ -43,7 +43,7 @@ export function AuthForm({
           type="text"
           autoComplete="username"
           required
-          hint="This becomes your public page: paywhatyouwant.io/vendor/yourname"
+          hint="This becomes your public page: paywhatyouwant.io/vendor/yourname — letters, numbers and hyphens"
         />
       )}
 
@@ -55,6 +55,19 @@ export function AuthForm({
         required
         hint={isJoin ? "At least 8 characters" : undefined}
       />
+
+      {/* Typed twice, because there is no password reset yet and no email to
+          recover against: a single mistyped character at this point would
+          orphan the account permanently. */}
+      {isJoin && (
+        <Field
+          label="Confirm password"
+          name="confirmPassword"
+          type="password"
+          autoComplete="new-password"
+          required
+        />
+      )}
 
       {isJoin && (
         <label className="flex items-start gap-3 rounded-card border border-hairline bg-surface p-4">

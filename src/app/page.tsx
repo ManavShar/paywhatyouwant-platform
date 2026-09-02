@@ -6,12 +6,14 @@ import { SiteFooter } from "@/components/layout/SiteFooter";
 import { SearchBar } from "@/components/layout/SearchBar";
 import { ProductGrid } from "@/components/product/ProductGrid";
 import { VideoIntro } from "@/components/home/VideoIntro";
-import { CATEGORIES } from "@/lib/taxonomy";
+import { CATEGORIES, SHOW_CATALOGUE_COUNTS } from "@/lib/taxonomy";
 import {
-  getFeaturedProducts,
-  getCategoryCounts,
-  getCategoryCovers,
+  getFeaturedProductsCached,
+  getLatestProductsCached,
+  getCategoryCountsCached,
+  getCategoryCoverEntriesCached,
 } from "@/lib/queries";
+import { resolveCardMeta } from "@/lib/card-meta.server";
 
 /**
  * Buyer-led homepage.
@@ -26,20 +28,25 @@ import {
  * and it consistently underperforms a plain browsable grid.
  */
 /**
- * Without this the homepage prerenders once at build time and the catalogue
- * it shows is frozen forever — new uploads would never surface. Five minutes
- * keeps it fast to serve while staying current enough for a marketplace.
+ * The page renders per request — the header has to know who is signed in, and
+ * that means reading a cookie. The catalogue queries underneath it are cached
+ * for five minutes instead (`src/lib/queries.ts`), so serving this page still
+ * costs no database work in the common case, and new uploads still surface
+ * within five minutes rather than never.
  */
-export const revalidate = 300;
+export default async function HomePage(props: PageProps<"/">) {
+  const sp = await props.searchParams;
 
-export default async function HomePage() {
-  const [featured, counts, covers] = await Promise.all([
-    getFeaturedProducts(30),
-    getCategoryCounts(),
-    getCategoryCovers(),
+  const [featured, latest, counts, coverEntries] = await Promise.all([
+    getFeaturedProductsCached(30),
+    getLatestProductsCached(12),
+    SHOW_CATALOGUE_COUNTS ? getCategoryCountsCached() : null,
+    getCategoryCoverEntriesCached(),
   ]);
 
-  const total = [...counts.values()].reduce((a, b) => a + b, 0);
+  const cardMeta = await resolveCardMeta(sp.cards);
+  const covers = new Map(coverEntries);
+  const total = counts ? counts.reduce((a, [, n]) => a + n, 0) : 0;
 
   return (
     <>
@@ -66,7 +73,7 @@ export default async function HomePage() {
               />
             </Suspense>
 
-            {total > 0 && (
+            {SHOW_CATALOGUE_COUNTS && total > 0 && (
               <p className="mt-4 text-sm text-ink-subtle">
                 {total.toLocaleString()} items from independent creators
               </p>
@@ -100,15 +107,44 @@ export default async function HomePage() {
                     <span className="block text-sm font-bold text-white sm:text-base">
                       {c.label}
                     </span>
-                    <span className="block text-xs text-white/75">
-                      {counts.get(c.value) ?? 0} items
-                    </span>
+                    {SHOW_CATALOGUE_COUNTS && (
+                      <span className="block text-xs text-white/75">
+                        {counts?.find(([v]) => v === c.value)?.[1] ?? 0} items
+                      </span>
+                    )}
                   </span>
                 </Link>
               );
             })}
           </div>
         </section>
+
+        {/* Newest first, above the popularity-ranked wall. Without this, a
+            creator who has just uploaded something goes to the homepage,
+            cannot find it anywhere, and concludes the upload failed — because
+            "Discover" is ranked by sales and nothing new can be near the top
+            of it. */}
+        {latest.length > 0 && (
+          <section className="mx-auto max-w-[1600px] px-4 pt-6 sm:px-6">
+            <div className="mb-5 flex items-baseline justify-between">
+              <h2 className="text-xl font-bold tracking-tight sm:text-2xl">
+                Just added
+              </h2>
+              <Link
+                href="/browse?sort=newest"
+                className="text-sm font-semibold text-brand hover:underline"
+              >
+                See what&apos;s new
+              </Link>
+            </div>
+            <ProductGrid
+              products={latest}
+              variant="uniform"
+              priorityCount={0}
+              meta={cardMeta}
+            />
+          </section>
+        )}
 
         {/* The wall. This is the page. */}
         <section className="mx-auto max-w-[1600px] px-4 py-10 sm:px-6">
@@ -125,7 +161,12 @@ export default async function HomePage() {
           </div>
 
           {featured.length > 0 ? (
-            <ProductGrid products={featured} variant="masonry" priorityCount={6} />
+            <ProductGrid
+              products={featured}
+              variant="masonry"
+              priorityCount={6}
+              meta={cardMeta}
+            />
           ) : (
             <EmptyCatalogue />
           )}

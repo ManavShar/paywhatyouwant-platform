@@ -3,6 +3,8 @@ import { OrderStatus } from "@prisma/client";
 import { db } from "@/lib/db";
 import { getStripe, accountCanReceiveFunds } from "@/lib/stripe";
 import { createGrant } from "@/lib/downloads";
+import { sendOrderReceipt } from "@/lib/receipts";
+import { applyRefund, openDispute, closeDispute } from "@/lib/reversals";
 
 /**
  * The only place an order is allowed to become COMPLETED.
@@ -53,11 +55,20 @@ export async function POST(request: Request) {
       // Already handled by an earlier delivery of this event.
       if (order.status === OrderStatus.COMPLETED) break;
 
+      // Stripe collects an email at checkout; we were throwing it away. For a
+      // guest purchase — no account, nothing else on the row — that address is
+      // the only mark of who bought the thing, and without it the order is
+      // anonymous to us while Stripe knows exactly who paid. Our own value
+      // wins if there is one, because a signed-in buyer's account email is the
+      // one their library is keyed to.
+      const email = order.email ?? session.customer_details?.email ?? undefined;
+
       await db.order.update({
         where: { id: order.id },
         data: {
           status: OrderStatus.COMPLETED,
           completedAt: new Date(),
+          ...(order.email ? {} : { email }),
           stripePaymentIntentId:
             typeof session.payment_intent === "string"
               ? session.payment_intent
@@ -70,7 +81,7 @@ export async function POST(request: Request) {
           productId: item.productId,
           orderId: order.id,
           userId: order.buyerId ?? undefined,
-          email: order.email ?? undefined,
+          email,
         });
 
         // Keep the denormalised counters that drive listings and dashboards.
@@ -96,6 +107,74 @@ export async function POST(request: Request) {
           });
         }
       }
+      // Only after the grants exist, and only on the delivery that actually
+      // completed the order — the early return above for an already-COMPLETED
+      // order is what stops Stripe's retries emailing the buyer twice.
+      await sendOrderReceipt(order.id);
+
+      // An album purchase is an ordinary multi-item order — which is why the
+      // loop above needed no changes for it — but the album has counters of
+      // its own that nothing in that loop touches.
+      if (order.albumId) {
+        await db.album.update({
+          where: { id: order.albumId },
+          data: {
+            salesCount: { increment: 1 },
+            earningsCents: { increment: order.vendorShareCents },
+          },
+        });
+      }
+
+      break;
+    }
+
+    /**
+     * Money going back the other way.
+     *
+     * None of these were handled, so a refund or a chargeback left the order
+     * COMPLETED, the creator's earnings inflated, the download count wrong and
+     * the buyer holding a live download link for something they had been paid
+     * back for. Stripe knew; this site did not.
+     */
+    case "charge.refunded": {
+      const charge = event.data.object;
+      const order = await orderForCharge(charge.payment_intent);
+      if (!order) break;
+
+      // Stripe's cumulative total for the charge, not the size of this refund.
+      // Passing the running total is what makes a repeated delivery a no-op.
+      await applyRefund(order.id, charge.amount_refunded);
+      break;
+    }
+
+    case "charge.dispute.created": {
+      const dispute = event.data.object;
+      const order = await orderForCharge(dispute.payment_intent);
+      if (!order) break;
+
+      await openDispute(order.id);
+      break;
+    }
+
+    case "charge.dispute.closed": {
+      const dispute = event.data.object;
+      const order = await orderForCharge(dispute.payment_intent);
+      if (!order) break;
+
+      // `won` gives the money back and, with it, the buyer's download.
+      await closeDispute(order.id, dispute.status);
+      break;
+    }
+
+    case "payment_intent.payment_failed": {
+      // A card declined after the session was created. Without this the order
+      // sits PENDING for ever and the order page spins on "confirming your
+      // payment" with nothing ever arriving.
+      const intent = event.data.object;
+      await db.order.updateMany({
+        where: { stripePaymentIntentId: intent.id, status: OrderStatus.PENDING },
+        data: { status: OrderStatus.FAILED },
+      });
       break;
     }
 
@@ -132,4 +211,24 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ received: true });
+}
+
+/**
+ * Finds the order a charge belongs to.
+ *
+ * Refund and dispute events carry a payment intent rather than our metadata,
+ * which is why the intent id is written onto the order the moment the checkout
+ * session completes.
+ */
+async function orderForCharge(paymentIntent: unknown) {
+  const id =
+    typeof paymentIntent === "string"
+      ? paymentIntent
+      : (paymentIntent as { id?: string } | null)?.id;
+  if (!id) return null;
+
+  return db.order.findUnique({
+    where: { stripePaymentIntentId: id },
+    select: { id: true },
+  });
 }

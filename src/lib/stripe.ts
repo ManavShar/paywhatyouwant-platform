@@ -53,6 +53,46 @@ export function splitAmount(totalCents: number): {
   };
 }
 
+/**
+ * Distributes one amount across several items so the parts sum to it exactly.
+ *
+ * An album is bought for a single pay-what-you-want amount, but it is recorded
+ * as one `OrderItem` per member, because that is what credits each product's
+ * counters and what the webhook issues download grants from. Those parts must
+ * add up to the amount actually charged: integer division alone loses cents,
+ * and a lost cent here is a permanent disagreement between what Stripe
+ * collected and what the platform believes it owes.
+ *
+ * Weights are the members' suggested prices, so a $10 track takes more of the
+ * payment than a $1 one. When every suggestion is zero — a legitimate case on
+ * this site, and the whole point of it — the split is equal instead.
+ *
+ * The remainder goes to the largest weights first, one cent each, which is
+ * arbitrary but has to be deterministic and has to terminate.
+ */
+export function splitAcross(totalCents: number, weights: number[]): number[] {
+  const n = weights.length;
+  if (n === 0) return [];
+  if (totalCents <= 0) return weights.map(() => 0);
+
+  const sum = weights.reduce((a, b) => a + b, 0);
+  const effective = sum > 0 ? weights : weights.map(() => 1);
+  const effectiveSum = sum > 0 ? sum : n;
+
+  const parts = effective.map((w) => Math.floor((totalCents * w) / effectiveSum));
+  let remainder = totalCents - parts.reduce((a, b) => a + b, 0);
+
+  const order = effective
+    .map((w, i) => [w, i] as const)
+    .sort((a, b) => b[0] - a[0] || a[1] - b[1]);
+
+  for (let k = 0; remainder > 0; k += 1, remainder -= 1) {
+    parts[order[k % n][1]] += 1;
+  }
+
+  return parts;
+}
+
 /* ------------------------------------------------------------ Connect ------
 
    Paywhatyouwant.io is a marketplace, not a SaaS platform: buyers purchase

@@ -54,7 +54,7 @@ src/app/embed/[slug]/           the embeddable widget (framable cross-origin)
 src/components/pricing/         PriceControl — the signature interaction
 src/lib/                        db, stripe, downloads, queries, taxonomy
 storage/media/                  PRIVATE. paid files. never web-reachable.
-public/media/                   covers + previews only, served statically.
+storage/public-media/           covers + previews only, served by /media/*.
 ```
 
 ### Two storage trees, on purpose
@@ -62,8 +62,40 @@ public/media/                   covers + previews only, served statically.
 `storage/media` holds everything pulled off the old host and is outside the web
 root; paid files are reachable only through `/api/download/[token]`, which
 checks a grant tied to a completed order. Covers and free previews are copied
-into `public/media` at import so a fifty-image grid does not run a database
+into `storage/public-media` at import so a fifty-image grid does not run a database
 query per thumbnail.
+
+**A public cover is always a derived rendition, never the uploaded bytes.**
+`storeUpload(file, "public", { as: "cover" })` re-encodes to a JPEG capped at
+1200px *and* at three quarters of the original's long edge, so the cover is
+always visibly smaller than what is being sold. This is not a performance
+tweak: the WordPress import attached one file to a product twice — as the paid
+download and as the cover — so 44 products were publishing the thing they were
+selling. `npm run fix:exposed-files` reports that condition and `--apply`
+repairs it; it is idempotent and safe to re-run.
+
+Cover uploads accept JPEG, PNG and GIF only (`ALLOWED_COVER`). webp and avif
+are excluded because the pure-JS decoder cannot read them, and a cover we
+cannot shrink is one we cannot promise is not the original.
+
+Note that the public tree is **not** under `public/`, and must not be moved
+there. `next build` snapshots that directory; `next start` then serves only the
+files that existed when the build ran, so anything uploaded afterwards 404s in
+production while working perfectly in `next dev`. Public media is served by
+`src/app/media/[...key]/route.ts`, which reads the disk per request.
+
+## Email
+
+Receipts and purchase-recovery links go out through `src/lib/mail.ts`. With no
+SMTP configured it writes each message to `storage/outbox/` and logs a warning
+rather than pretending to send — so the flow can be built and tested before the
+domain has mail, and a misconfigured deployment fails visibly instead of
+silently losing receipts.
+
+This matters more than it looks. Buying does not require an account, so for a
+guest the receipt is the *only* copy of their download link; `/recover` is the
+way back if they lose it, and it works by emailing a single-use link rather
+than by listing purchases for any address someone types in.
 
 ## Money
 

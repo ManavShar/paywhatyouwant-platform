@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { ProductForm } from "@/components/vendor/ProductForm";
+import { createProduct } from "@/lib/actions/products";
 
 export const metadata: Metadata = { title: "Add a product" };
 
@@ -13,7 +14,7 @@ export default function NewProductPage() {
           You can save a draft and come back to it.
         </p>
       </header>
-      <ProductForm />
+      <ProductForm action={createProduct} />
     </div>
   );
 }

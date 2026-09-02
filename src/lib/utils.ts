@@ -40,6 +40,18 @@ export function formatPrice(cents: number): string {
   }).format(cents / 100);
 }
 
+/**
+ * A cents amount as it should appear in a text box the user will edit.
+ *
+ * "5" not "5.00" when the amount is whole — less to delete when retyping.
+ * Shared by the buyer's price control and the vendor's product form so the two
+ * cannot disagree about how a price is written.
+ */
+export function formatAmountForInput(cents: number): string {
+  if (cents === 0) return "0";
+  return cents % 100 === 0 ? String(cents / 100) : (cents / 100).toFixed(2);
+}
+
 /** Parses user-typed price input ("5", "$5.00", "5,50") into cents. */
 export function parsePriceToCents(input: string): number | null {
   const cleaned = input.replace(/[^0-9.,]/g, "").replace(/,/g, ".");

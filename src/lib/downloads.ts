@@ -16,6 +16,15 @@ import { db } from "./db";
 const GRANT_TTL_DAYS = 30;
 const MAX_DOWNLOADS = 10;
 
+/**
+ * Mints a grant.
+ *
+ * Every caller that re-issues one — the buyer's library and the guest recovery
+ * page — filters on `status: COMPLETED` first, which is what stops a refunded
+ * or disputed order handing out a fresh link and undoing the revocation
+ * through the front door. A *partial* refund deliberately stays COMPLETED: the
+ * buyer paid for it and keeps it.
+ */
 export async function createGrant(params: {
   productId: string;
   orderId?: string;
@@ -40,7 +49,7 @@ export async function createGrant(params: {
 
 export type GrantCheck =
   | { ok: true; grant: NonNullable<Awaited<ReturnType<typeof findGrant>>> }
-  | { ok: false; reason: "not-found" | "expired" | "exhausted" };
+  | { ok: false; reason: "not-found" | "expired" | "exhausted" | "revoked" };
 
 async function findGrant(token: string) {
   return db.downloadGrant.findUnique({
@@ -54,6 +63,10 @@ async function findGrant(token: string) {
 export async function checkGrant(token: string): Promise<GrantCheck> {
   const grant = await findGrant(token);
   if (!grant) return { ok: false, reason: "not-found" };
+  // Checked before expiry so a refunded buyer is told the truth rather than
+  // that their link "expired". The payment behind this grant was reversed —
+  // by refund or chargeback — and the file goes back with the money.
+  if (grant.revokedAt) return { ok: false, reason: "revoked" };
   if (grant.expiresAt < new Date()) return { ok: false, reason: "expired" };
   if (grant.downloadCount >= grant.maxDownloads) {
     return { ok: false, reason: "exhausted" };

@@ -5,9 +5,25 @@ import { UploadCloud, X } from "lucide-react";
 import { Category, Licence } from "@prisma/client";
 import { CATEGORIES, LICENCES } from "@/lib/taxonomy";
 import { formatBytes, formatPrice, parsePriceToCents, cn } from "@/lib/utils";
-import { createProduct, type ProductFormState } from "@/lib/actions/products";
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL } from "@/lib/upload-limits";
+import type { ProductFormState } from "@/lib/actions/products";
 
 const TITLE_MAX = 50;
+
+/** What an existing product supplies when the form is opened to edit it. */
+export type ProductFormInitial = {
+  id: string;
+  title: string;
+  description: string;
+  category: Category;
+  licence: Licence;
+  tags: string;
+  suggestedPrice: string;
+  minimumPrice: string;
+  coverImageUrl: string | null;
+  productFileName: string | null;
+  previewFileName: string | null;
+};
 
 /**
  * The upload form, following the field list Max supplied in his screenshots:
@@ -21,21 +37,52 @@ const TITLE_MAX = 50;
  *    "Amount ($)" box with no indication of how it would be presented.
  *  - Files are drag-and-droppable and report their size immediately, rather
  *    than being pasted in as a "File URL".
+ *
+ * The same component serves create and edit. In edit mode the file fields mean
+ * "replace this" and name what is currently attached, because a form that
+ * silently wipes an uploaded file when you leave its input empty is a trap.
  */
-export function ProductForm() {
+export function ProductForm({
+  action,
+  initial,
+}: {
+  action: (
+    state: ProductFormState,
+    formData: FormData,
+  ) => Promise<ProductFormState>;
+  initial?: ProductFormInitial;
+}) {
   const [state, formAction, pending] = useActionState<ProductFormState, FormData>(
-    createProduct,
+    action,
     undefined,
   );
 
-  const [title, setTitle] = useState("");
-  const [price, setPrice] = useState("2.99");
-  const [category, setCategory] = useState<Category>(Category.PHOTOGRAPHY);
+  const editing = initial !== undefined;
+
+  const [title, setTitle] = useState(initial?.title ?? "");
+  const [price, setPrice] = useState(initial?.suggestedPrice ?? "2.99");
+  const [category, setCategory] = useState<Category>(
+    initial?.category ?? Category.PHOTOGRAPHY,
+  );
+
+  // Names of the file fields currently holding something too big to send. The
+  // framework rejects an oversized Server Action body before any of our code
+  // runs, so without this check the only feedback is a generic failure after a
+  // long wait.
+  const [oversized, setOversized] = useState<string[]>([]);
 
   const priceCents = parsePriceToCents(price);
 
+  function reportSize(name: string, tooBig: boolean) {
+    setOversized((prev) =>
+      tooBig ? [...new Set([...prev, name])] : prev.filter((n) => n !== name),
+    );
+  }
+
   return (
     <form action={formAction} className="max-w-2xl space-y-8">
+      {editing && <input type="hidden" name="productId" value={initial.id} />}
+
       <Section title="The basics">
         <Labelled
           label="Name"
@@ -62,6 +109,7 @@ export function ProductForm() {
             name="description"
             required
             rows={6}
+            defaultValue={initial?.description ?? ""}
             placeholder="What is it, how was it made, what can people use it for?"
             className={cn(inputClass, "h-auto resize-y py-3 leading-relaxed")}
           />
@@ -86,6 +134,7 @@ export function ProductForm() {
           <Labelled label="Tags" hint="Comma separated">
             <input
               name="tags"
+              defaultValue={initial?.tags ?? ""}
               placeholder="landscape, sunrise, australia"
               className={inputClass}
             />
@@ -97,18 +146,31 @@ export function ProductForm() {
         <FileField
           name="productFile"
           label="The file people are buying"
-          hint="Upload the original, at full quality. For an album or a set, zip it."
+          hint={`Upload the original, at full quality. Up to ${MAX_UPLOAD_LABEL} per file.`}
+          current={initial?.productFileName ?? null}
+          editing={editing}
+          onSizeChange={reportSize}
         />
         <FileField
           name="coverImage"
           label="Cover image"
           hint="Shown in the catalogue and on your page."
           accept="image/*"
+          current={
+            initial?.coverImageUrl
+              ? initial.coverImageUrl.split("/").pop() ?? "current image"
+              : null
+          }
+          editing={editing}
+          onSizeChange={reportSize}
         />
         <FileField
           name="previewFile"
           label="Preview"
           hint="A short clip or a lower-resolution taste. This is what plays inside embeds on other people's sites, so it does the selling."
+          current={initial?.previewFileName ?? null}
+          editing={editing}
+          onSizeChange={reportSize}
         />
       </Section>
 
@@ -160,7 +222,7 @@ export function ProductForm() {
             <input
               name="minimumPrice"
               inputMode="decimal"
-              defaultValue="0"
+              defaultValue={initial?.minimumPrice ?? "0"}
               className="h-full w-full bg-transparent font-semibold outline-none"
             />
           </div>
@@ -179,7 +241,7 @@ export function ProductForm() {
                 type="radio"
                 name="licence"
                 value={key}
-                defaultChecked={i === 0}
+                defaultChecked={initial ? initial.licence === key : i === 0}
                 className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--color-brand)]"
               />
               <span className="text-sm leading-relaxed">
@@ -195,6 +257,17 @@ export function ProductForm() {
         </fieldset>
       </Section>
 
+      {oversized.length > 0 && (
+        <p
+          role="alert"
+          className="rounded-control border border-danger/30 bg-danger/5 p-3 text-sm font-medium text-danger"
+        >
+          One of your files is over {MAX_UPLOAD_LABEL}. Swap it for a smaller
+          one — anything larger has to be sent a different way for now, so tell
+          us and we&apos;ll sort it out.
+        </p>
+      )}
+
       {state?.error && (
         <p
           role="alert"
@@ -205,24 +278,36 @@ export function ProductForm() {
       )}
 
       <div className="flex flex-col-reverse gap-3 sm:flex-row">
-        <button
-          type="submit"
-          name="intent"
-          value="draft"
-          disabled={pending}
-          className="h-12 rounded-control border border-hairline-strong px-5 text-sm font-semibold text-ink transition-colors hover:bg-surface-hover disabled:opacity-50 sm:flex-1"
-        >
-          Save as draft
-        </button>
-        <button
-          type="submit"
-          name="intent"
-          value="publish"
-          disabled={pending}
-          className="h-12 rounded-control bg-brand px-5 text-sm font-semibold text-ink-inverse transition-colors hover:bg-brand-hover disabled:opacity-50 sm:flex-[2]"
-        >
-          {pending ? "Uploading…" : "Publish"}
-        </button>
+        {editing ? (
+          <button
+            type="submit"
+            disabled={pending || oversized.length > 0}
+            className="h-12 rounded-control bg-brand px-5 text-sm font-semibold text-ink-inverse transition-colors hover:bg-brand-hover disabled:opacity-50 sm:flex-1"
+          >
+            {pending ? "Saving…" : "Save changes"}
+          </button>
+        ) : (
+          <>
+            <button
+              type="submit"
+              name="intent"
+              value="draft"
+              disabled={pending || oversized.length > 0}
+              className="h-12 rounded-control border border-hairline-strong px-5 text-sm font-semibold text-ink transition-colors hover:bg-surface-hover disabled:opacity-50 sm:flex-1"
+            >
+              Save as draft
+            </button>
+            <button
+              type="submit"
+              name="intent"
+              value="publish"
+              disabled={pending || oversized.length > 0}
+              className="h-12 rounded-control bg-brand px-5 text-sm font-semibold text-ink-inverse transition-colors hover:bg-brand-hover disabled:opacity-50 sm:flex-[2]"
+            >
+              {pending ? "Uploading…" : "Publish"}
+            </button>
+          </>
+        )}
       </div>
     </form>
   );
@@ -281,15 +366,28 @@ function FileField({
   label,
   hint,
   accept,
+  current,
+  editing,
+  onSizeChange,
 }: {
   name: string;
   label: string;
   hint?: string;
   accept?: string;
+  current?: string | null;
+  editing?: boolean;
+  onSizeChange?: (name: string, tooBig: boolean) => void;
 }) {
   const [file, setFile] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
   const inputId = `file-${name}`;
+
+  const tooBig = file !== null && file.size > MAX_UPLOAD_BYTES;
+
+  function pick(next: File | null) {
+    setFile(next);
+    onSizeChange?.(name, next !== null && next.size > MAX_UPLOAD_BYTES);
+  }
 
   return (
     <div>
@@ -297,6 +395,14 @@ function FileField({
       {hint && (
         <span className="mb-1.5 mt-0.5 block text-xs leading-relaxed text-ink-subtle">
           {hint}
+        </span>
+      )}
+
+      {editing && (
+        <span className="mb-1.5 block text-xs leading-relaxed text-ink-subtle">
+          {current
+            ? `Currently ${current}. Choose a file to replace it, or leave this empty to keep it.`
+            : "Nothing attached yet."}
         </span>
       )}
 
@@ -316,13 +422,15 @@ function FileField({
           const dt = new DataTransfer();
           dt.items.add(dropped);
           input.files = dt.files;
-          setFile(dropped);
+          pick(dropped);
         }}
         className={cn(
           "relative rounded-card border border-dashed p-4 transition-colors",
-          dragging
-            ? "border-brand bg-surface"
-            : "border-hairline-strong hover:bg-surface-hover",
+          tooBig
+            ? "border-danger bg-danger/5"
+            : dragging
+              ? "border-brand bg-surface"
+              : "border-hairline-strong hover:bg-surface-hover",
         )}
       >
         <input
@@ -330,7 +438,7 @@ function FileField({
           type="file"
           name={name}
           accept={accept}
-          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          onChange={(e) => pick(e.target.files?.[0] ?? null)}
           className="absolute inset-0 cursor-pointer opacity-0"
         />
 
@@ -340,14 +448,22 @@ function FileField({
               <p className="truncate text-sm font-semibold text-ink">
                 {file.name}
               </p>
-              <p className="text-xs text-ink-subtle">{formatBytes(file.size)}</p>
+              <p
+                className={cn(
+                  "text-xs",
+                  tooBig ? "font-semibold text-danger" : "text-ink-subtle",
+                )}
+              >
+                {formatBytes(file.size)}
+                {tooBig && ` — over the ${MAX_UPLOAD_LABEL} limit`}
+              </p>
             </div>
             <button
               type="button"
               onClick={() => {
                 const input = document.getElementById(inputId) as HTMLInputElement;
                 input.value = "";
-                setFile(null);
+                pick(null);
               }}
               aria-label={`Remove ${file.name}`}
               className="relative z-10 grid h-8 w-8 shrink-0 place-items-center rounded-control text-ink-muted hover:bg-surface-hover"

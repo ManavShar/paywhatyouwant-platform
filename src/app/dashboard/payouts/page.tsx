@@ -52,6 +52,7 @@ export default async function PayoutsPage(props: PageProps<"/dashboard/payouts">
         <ConnectPayouts
           initialStatus={status}
           configured={isStripeConfigured()}
+          justReturned={justReturned}
         />
 
         <div className="rounded-card border border-hairline p-5">

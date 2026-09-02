@@ -53,6 +53,10 @@ enum OrderStatus {
   COMPLETED
   FAILED
   REFUNDED
+  /// A chargeback is open. Distinct from REFUNDED because it can still be won,
+  /// and because the two mean very different things to a creator: a refund is
+  /// usually the seller's own decision, a dispute is the bank's.
+  DISPUTED
 }
 
 // ---------------------------------------------------------------- users ----
@@ -65,7 +69,7 @@ model User {
   name     String?
   role     UserRole @default(BUYER)
 
-  passwordHash String?
+  passwordHash  String?
   emailVerified DateTime?
 
   bio       String?
@@ -76,10 +80,10 @@ model User {
   instagram String?
 
   /// Stripe Connect account, set once the vendor completes onboarding.
-  stripeAccountId       String? @unique
-  stripeOnboardingDone  Boolean @default(false)
+  stripeAccountId      String? @unique
+  stripeOnboardingDone Boolean @default(false)
   /// Stripe Customer, for buyers.
-  stripeCustomerId      String? @unique
+  stripeCustomerId     String? @unique
 
   /// Denormalised for cheap rendering of profile and card views.
   followerCount  Int @default(0)
@@ -91,27 +95,28 @@ model User {
   pageViews      Int @default(0)
 
   vendorSince DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   /// WordPress import provenance.
   legacyWpLogin String? @unique
 
-  products   Product[]
-  orders     Order[]
-  posts      VendorPost[]
-  reviews    Review[]
-  grants     DownloadGrant[]
-  followers  Follow[] @relation("Followed")
-  following  Follow[] @relation("Follower")
-  accounts   Account[]
-  sessions   Session[]
+  products  Product[]
+  albums    Album[]
+  orders    Order[]
+  posts     VendorPost[]
+  reviews   Review[]
+  grants    DownloadGrant[]
+  followers Follow[]        @relation("Followed")
+  following Follow[]        @relation("Follower")
+  accounts  Account[]
+  sessions  Session[]
 
   /// Affiliate system is deferred, but the relations exist now so that
   /// enabling it later does not require migrating live order data.
-  referredBy   User?  @relation("Referral", fields: [referredById], references: [id])
+  referredBy   User?   @relation("Referral", fields: [referredById], references: [id])
   referredById String?
-  referrals    User[] @relation("Referral")
+  referrals    User[]  @relation("Referral")
 
   @@index([role])
   @@index([username])
@@ -144,20 +149,21 @@ model Product {
   vendorId String
 
   /// Denormalised counters.
-  salesCount     Int @default(0)
-  earningsCents  Int @default(0)
-  viewCount      Int @default(0)
-  averageRating  Float?
+  salesCount    Int    @default(0)
+  earningsCents Int    @default(0)
+  viewCount     Int    @default(0)
+  averageRating Float?
 
   publishedAt DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
   /// WordPress import provenance, and why an import flagged this record.
-  legacyWpId   Int?    @unique
-  flagReason   String?
+  legacyWpId Int?    @unique
+  flagReason String?
 
   files      ProductFile[]
+  albumItems AlbumItem[]
   tags       TagsOnProducts[]
   orderItems OrderItem[]
   reviews    Review[]
@@ -198,6 +204,73 @@ model ProductFile {
   @@index([productId, isPreview])
 }
 
+// --------------------------------------------------------------- albums ----
+
+/// A collection sold as one item: a music album, a photo set, a podcast series.
+///
+/// An album **groups products, it does not replace them**. Every track or
+/// photo remains a full `Product` with its own page, price, preview, licence
+/// and embed, so "buy just this one" needs no special machinery — it is an
+/// ordinary product purchase. The album adds a second thing to buy, at its own
+/// pay-what-you-want price, that delivers every member at once.
+///
+/// That shape was chosen because the order side already supported it: an
+/// `Order` has many `OrderItem`s and many `DownloadGrant`s, and the Stripe
+/// webhook already issues one grant per item. An album purchase is an ordinary
+/// multi-item order.
+model Album {
+  id          String        @id @default(cuid())
+  slug        String        @unique
+  title       String
+  description String        @db.Text
+  category    Category
+  licence     Licence       @default(ALL_RIGHTS_RESERVED)
+  status      ProductStatus @default(DRAFT)
+
+  /// Pay what you want applies to the album exactly as it does to a product.
+  /// A price of 0 is valid here too.
+  suggestedPriceCents Int @default(0)
+  minimumPriceCents   Int @default(0)
+
+  coverImageUrl String?
+
+  vendor   User   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  vendorId String
+
+  /// Denormalised, same as Product.
+  salesCount    Int @default(0)
+  earningsCents Int @default(0)
+  viewCount     Int @default(0)
+
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  items  AlbumItem[]
+  orders Order[]
+
+  @@index([category, status, publishedAt])
+  @@index([vendorId, status])
+  @@index([status, publishedAt])
+}
+
+/// Membership, ordered. Deleting an album removes these rows and leaves the
+/// products alone — a track that has sold on its own must survive its album
+/// being taken down.
+model AlbumItem {
+  album     Album   @relation(fields: [albumId], references: [id], onDelete: Cascade)
+  albumId   String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId String
+
+  /// Track number / running order.
+  position Int
+
+  @@id([albumId, productId])
+  @@unique([albumId, position])
+  @@index([productId])
+}
+
 model Tag {
   id       String           @id @default(cuid())
   slug     String           @unique
@@ -227,9 +300,26 @@ model Order {
   /// Where the receipt and download link go for guests.
   email   String?
 
-  totalPaidCents    Int @default(0)
-  platformFeeCents  Int @default(0)
-  vendorShareCents  Int @default(0)
+  totalPaidCents   Int @default(0)
+  platformFeeCents Int @default(0)
+  vendorShareCents Int @default(0)
+
+  /// Set when this order was a whole-album purchase, so the album's own
+  /// counters can be moved and the buyer's library can say what they bought.
+  /// Null for an ordinary single-product order.
+  album   Album?  @relation(fields: [albumId], references: [id], onDelete: SetNull)
+  albumId String?
+
+  /// Cumulative amount returned to the buyer, mirroring Stripe's
+  /// `amount_refunded`. Held as a running total rather than a boolean so a
+  /// partial refund is representable, and so a repeated webhook delivery can
+  /// be recognised as one it has already applied.
+  refundedCents Int @default(0)
+
+  refundedAt     DateTime?
+  disputedAt     DateTime?
+  /// Stripe's own word for how a dispute ended: won, lost, warning_closed…
+  disputeOutcome String?
 
   stripeSessionId       String? @unique
   stripePaymentIntentId String? @unique
@@ -253,7 +343,7 @@ model OrderItem {
   productId String
 
   /// What the buyer chose. May legitimately be 0.
-  pricePaidCents     Int
+  pricePaidCents      Int
   /// What was suggested at the moment of purchase. Snapshotted rather than
   /// read through to Product, because vendors change their prices later and
   /// that would silently rewrite history.
@@ -285,6 +375,11 @@ model DownloadGrant {
   maxDownloads  Int      @default(10)
   expiresAt     DateTime
   createdAt     DateTime @default(now())
+
+  /// Set when the payment behind this grant was reversed. Kept rather than
+  /// deleted: the row is the record that the file *was* handed over, which is
+  /// exactly what someone reviewing a chargeback needs to see.
+  revokedAt DateTime?
 
   @@index([productId])
   @@index([userId])
@@ -366,6 +461,45 @@ model Session {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+/// Fixed-window rate limiting.
+///
+/// In Postgres rather than in memory because the protection has to survive a
+/// restart: an in-process counter means anyone who can make the server restart
+/// — or who simply waits for a deploy — gets a fresh allowance, which is no
+/// protection at all against a patient password guesser.
+///
+/// One row per key (`login:<ip>`, `checkout:<ip>`, …). The window is advanced
+/// atomically in a single upsert; see `src/lib/rate-limit.ts`.
+model RateLimit {
+  key       String   @id
+  count     Int      @default(0)
+  windowEnd DateTime
+
+  @@index([windowEnd])
+}
+
+/// A single-use link that lets someone prove they control an email address.
+///
+/// Two jobs, distinguished by `purpose`: resetting a forgotten password, and
+/// recovering the downloads from a guest purchase. Both are the same shape —
+/// prove the address, then act — and both were previously impossible, which
+/// meant a forgotten password needed a database edit and a guest who closed
+/// their tab lost what they had paid for.
+model EmailToken {
+  id        String    @id @default(cuid())
+  /// SHA-256 of the token we emailed. The plaintext exists only in that email:
+  /// a leaked database backup must not hand over working links.
+  tokenHash String    @unique
+  email     String
+  purpose   String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([email, purpose])
+  @@index([expiresAt])
 }
 
 model VerificationToken {

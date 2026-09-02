@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { CATEGORIES } from "@/lib/taxonomy";
+import { CATEGORIES, SHOW_CATALOGUE_COUNTS } from "@/lib/taxonomy";
 
 /**
  * Filter chips plus a sort control.
@@ -62,9 +62,11 @@ export function BrowseToolbar({
         </Chip>
 
         <div className="ml-auto flex shrink-0 items-center gap-2 pl-3">
-          <span className="hidden text-sm text-ink-subtle sm:inline">
-            {total.toLocaleString()} items
-          </span>
+          {SHOW_CATALOGUE_COUNTS && (
+            <span className="hidden text-sm text-ink-subtle sm:inline">
+              {total.toLocaleString()} items
+            </span>
+          )}
           <label className="sr-only" htmlFor="sort">
             Sort by
           </label>

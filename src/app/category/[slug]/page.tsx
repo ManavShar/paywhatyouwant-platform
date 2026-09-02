@@ -4,8 +4,9 @@ import { Suspense } from "react";
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import { SiteFooter } from "@/components/layout/SiteFooter";
 import { ProductGrid } from "@/components/product/ProductGrid";
+import { resolveCardMeta } from "@/lib/card-meta.server";
 import { BrowseToolbar } from "@/components/product/BrowseToolbar";
-import { browseProducts } from "@/lib/queries";
+import { browseCatalogue } from "@/lib/queries";
 import { CATEGORY_BY_SLUG, CATEGORIES } from "@/lib/taxonomy";
 
 /** Keep category listings current as new work is published. */
@@ -41,7 +42,9 @@ export default async function CategoryPage(
     sortRaw === "popular" || sortRaw === "price-low" ? sortRaw : "newest";
   const page = Math.max(1, Number.parseInt(first(sp.page) ?? "1", 10) || 1);
 
-  const { items, total } = await browseProducts({
+  const cardMeta = await resolveCardMeta(sp.cards);
+
+  const { items, total } = await browseCatalogue({
     category: meta.value,
     freeOnly: first(sp.free) === "1",
     sort,
@@ -66,7 +69,12 @@ export default async function CategoryPage(
         </div>
 
         {items.length > 0 ? (
-          <ProductGrid products={items} variant={meta.layout} priorityCount={8} />
+          <ProductGrid
+            products={items}
+            variant={meta.layout}
+            priorityCount={8}
+            meta={cardMeta}
+          />
         ) : (
           <p className="py-24 text-center text-ink-muted">
             Nothing in {meta.label.toLowerCase()} yet.

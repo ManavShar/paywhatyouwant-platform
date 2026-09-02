@@ -53,6 +53,21 @@ export const CATEGORIES: CategoryMeta[] = [
   },
 ];
 
+/**
+ * Whether the site states how many items it holds.
+ *
+ * Off, at Max's request: "we probably shouldn't list the number of items in
+ * photography, music, ebooks etc as it doesn't look impressive — let's wait
+ * till it's 50 million items." A catalogue of 138 advertising itself as 138
+ * makes the place look empty; saying nothing makes it look unbothered.
+ *
+ * One flag rather than five deletions, so turning them back on when the number
+ * is worth showing is a one-line change.
+ */
+// Typed as boolean, not the literal `false`, so both branches at every call
+// site stay type-checked and flipping it needs no other edit.
+export const SHOW_CATALOGUE_COUNTS: boolean = false;
+
 export const CATEGORY_BY_SLUG = new Map(CATEGORIES.map((c) => [c.slug, c]));
 export const CATEGORY_BY_VALUE = new Map(CATEGORIES.map((c) => [c.value, c]));
 

@@ -7,6 +7,7 @@ import { requireVendor } from "@/lib/auth";
 import { getVendorProducts } from "@/lib/vendor-queries";
 import { CATEGORY_BY_VALUE } from "@/lib/taxonomy";
 import { formatPrice, cn, formatMoney } from "@/lib/utils";
+import { ProductRowActions } from "@/components/vendor/ProductRowActions";
 
 export const metadata: Metadata = { title: "Your products" };
 
@@ -14,7 +15,8 @@ export default async function VendorProductsPage(
   props: PageProps<"/dashboard/products">,
 ) {
   const sp = await props.searchParams;
-  const justCreated = sp.created === "1";
+  const created = Array.isArray(sp.created) ? sp.created[0] : sp.created;
+  const updated = (Array.isArray(sp.updated) ? sp.updated[0] : sp.updated) === "1";
 
   const user = await requireVendor();
   const products = await getVendorProducts(user.id);
@@ -37,12 +39,19 @@ export default async function VendorProductsPage(
         </Link>
       </header>
 
-      {justCreated && (
+      {/* A draft is not live, and saying it is at exactly the moment someone is
+          checking whether their draft saved is the worst possible time to be
+          vague. */}
+      {(created || updated) && (
         <p
           role="status"
           className="mb-6 rounded-control border border-hairline bg-surface p-3 text-sm font-medium text-ink"
         >
-          Saved. It&apos;s live on your page now.
+          {created === "draft"
+            ? "Saved as a draft. Nobody can see it until you publish it."
+            : created === "live"
+              ? "Saved. It's live on your page now."
+              : "Changes saved."}
         </p>
       )}
 
@@ -55,52 +64,70 @@ export default async function VendorProductsPage(
         </div>
       ) : (
         <ul className="divide-y divide-hairline rounded-card border border-hairline">
-          {products.map((p) => (
-            <li key={p.id} className="flex items-center gap-4 p-3 sm:p-4">
-              <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-surface">
-                {p.coverImageUrl && (
-                  <Image
-                    src={p.coverImageUrl}
-                    alt=""
-                    fill
-                    sizes="56px"
-                    className="object-cover"
-                  />
-                )}
-              </div>
+          {products.map((p) => {
+            // Only a published product has a public page. Sending a draft to
+            // `/product/<slug>` produced a 404 from a link we wrote ourselves.
+            const href =
+              p.status === ProductStatus.PUBLISHED
+                ? `/product/${p.slug}`
+                : `/dashboard/products/${p.id}`;
 
-              <div className="min-w-0 flex-1">
-                <Link
-                  href={`/product/${p.slug}`}
-                  className="block truncate text-[0.9375rem] font-semibold text-ink hover:underline"
-                >
-                  {p.title}
-                </Link>
-                <p className="mt-0.5 truncate text-sm text-ink-muted">
-                  {CATEGORY_BY_VALUE.get(p.category)?.label} ·{" "}
-                  {p.suggestedPriceCents === 0
-                    ? "Name your price"
-                    : `from ${formatPrice(p.suggestedPriceCents)}`}
-                </p>
-                {p.status === ProductStatus.FLAGGED && p.flagReason && (
-                  <p className="mt-1 text-xs text-warning">
-                    Held for review — {p.flagReason}
+            return (
+              <li
+                key={p.id}
+                className="flex flex-wrap items-center gap-4 p-3 sm:flex-nowrap sm:p-4"
+              >
+                <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-surface">
+                  {p.coverImageUrl && (
+                    <Image
+                      src={p.coverImageUrl}
+                      alt=""
+                      fill
+                      sizes="56px"
+                      className="object-cover"
+                    />
+                  )}
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <Link
+                    href={href}
+                    className="block truncate text-[0.9375rem] font-semibold text-ink hover:underline"
+                  >
+                    {p.title}
+                  </Link>
+                  <p className="mt-0.5 truncate text-sm text-ink-muted">
+                    {CATEGORY_BY_VALUE.get(p.category)?.label} ·{" "}
+                    {p.suggestedPriceCents === 0
+                      ? "Name your price"
+                      : `from ${formatPrice(p.suggestedPriceCents)}`}
                   </p>
-                )}
-              </div>
+                  {p.status === ProductStatus.FLAGGED && p.flagReason && (
+                    <p className="mt-1 text-xs text-warning">
+                      Held for review — {p.flagReason}
+                    </p>
+                  )}
+                </div>
 
-              <div className="hidden shrink-0 text-right sm:block">
-                <p className="text-sm font-semibold tabular-nums text-ink">
-                  {formatMoney(p.earningsCents)}
-                </p>
-                <p className="text-xs text-ink-subtle">
-                  {p.salesCount} {p.salesCount === 1 ? "sale" : "sales"}
-                </p>
-              </div>
+                <div className="hidden shrink-0 text-right sm:block">
+                  <p className="text-sm font-semibold tabular-nums text-ink">
+                    {formatMoney(p.earningsCents)}
+                  </p>
+                  <p className="text-xs text-ink-subtle">
+                    {p.salesCount} {p.salesCount === 1 ? "sale" : "sales"}
+                  </p>
+                </div>
 
-              <StatusPill status={p.status} />
-            </li>
-          ))}
+                <StatusPill status={p.status} />
+
+                <ProductRowActions
+                  productId={p.id}
+                  status={p.status}
+                  sold={p._count.orderItems > 0}
+                />
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

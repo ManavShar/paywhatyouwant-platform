@@ -1,7 +1,10 @@
 import Link from "next/link";
 import type { Metadata } from "next";
+import { UserRole } from "@prisma/client";
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import { SiteFooter } from "@/components/layout/SiteFooter";
+import { requireUser } from "@/lib/auth";
+import { becomeCreator } from "@/lib/actions/profile";
 
 export const metadata: Metadata = {
   title: "Sell your work",
@@ -14,7 +17,9 @@ export const metadata: Metadata = {
  * than competing with the catalogue on the homepage — but it has to be
  * genuinely persuasive, because a marketplace with no supply is nothing.
  */
-export default function SellPage() {
+export default async function SellPage() {
+  const user = await requireUser();
+
   return (
     <>
       <SiteHeader />
@@ -70,19 +75,41 @@ export default function SellPage() {
           </Link>
         </div>
 
+        {/* Three different visitors read this page, and until now all three
+            were sent to /join — which redirects anyone already signed in
+            straight back to a dashboard that bounces buyers back here. */}
         <div className="mt-12">
-          <Link
-            href="/join"
-            className="inline-flex h-12 items-center rounded-control bg-brand px-6 font-semibold text-ink-inverse transition-colors hover:bg-brand-hover"
-          >
-            Create a creator account
-          </Link>
+          {!user ? (
+            <Link
+              href="/join"
+              className={ctaClass}
+            >
+              Create a creator account
+            </Link>
+          ) : user.role === UserRole.BUYER ? (
+            <form action={becomeCreator}>
+              <button type="submit" className={ctaClass}>
+                Turn on your creator account
+              </button>
+              <p className="mt-3 text-sm text-ink-muted">
+                You keep the account you already have, {user.name || user.username} —
+                this just adds your creator page and the dashboard.
+              </p>
+            </form>
+          ) : (
+            <Link href="/dashboard/products/new" className={ctaClass}>
+              Upload your work
+            </Link>
+          )}
         </div>
       </main>
       <SiteFooter />
     </>
   );
 }
+
+const ctaClass =
+  "inline-flex h-12 items-center rounded-control bg-brand px-6 font-semibold text-ink-inverse transition-colors hover:bg-brand-hover";
 
 function Step({
   n,

@@ -2,16 +2,21 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { Download, FileText, Shield } from "lucide-react";
+import { Download, FileText, Shield, Layers } from "lucide-react";
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import { SiteFooter } from "@/components/layout/SiteFooter";
 import { PurchasePanel } from "@/components/product/PurchasePanel";
 import { ProductGrid } from "@/components/product/ProductGrid";
 import { AudioPlayer } from "@/components/media/AudioPlayer";
 import { EmbedCode } from "@/components/product/EmbedCode";
-import { getProductBySlug, getRelatedProducts } from "@/lib/queries";
+import {
+  getProductBySlug,
+  getRelatedProducts,
+  getAlbumForProduct,
+} from "@/lib/queries";
+import { resolveCardMeta } from "@/lib/card-meta.server";
 import { LICENCES, CATEGORY_BY_VALUE, AUDIO_CATEGORIES } from "@/lib/taxonomy";
-import { formatBytes, formatCount } from "@/lib/utils";
+import { formatBytes, formatCount, formatPrice } from "@/lib/utils";
 
 export async function generateMetadata(
   props: PageProps<"/product/[slug]">,
@@ -36,7 +41,10 @@ export default async function ProductPage(props: PageProps<"/product/[slug]">) {
   const product = await getProductBySlug(slug);
   if (!product) notFound();
 
+  // Null for almost everything: most products stand alone.
+  const album = await getAlbumForProduct(product.slug);
   const related = await getRelatedProducts(product.slug, product.category, 10);
+  const cardMeta = await resolveCardMeta((await props.searchParams).cards);
 
   const creatorName = product.vendor.name || product.vendor.username;
   const licence = LICENCES[product.licence];
@@ -146,6 +154,33 @@ export default async function ProductPage(props: PageProps<"/product/[slug]">) {
 
           {/* ---- the decision ---------------------------------------- */}
           <aside className="lg:sticky lg:top-24 lg:self-start">
+            {/* A track reached directly — from search, a link, or the wall —
+                gives no clue that it is part of something larger. This is the
+                only route back to the collection, and the client asked for the
+                collection to be the item people are steered towards. */}
+            {album && (
+              <Link
+                href={`/album/${album.slug}`}
+                className="mb-3 flex items-center gap-3 rounded-card border border-brand/30 bg-brand/5 p-4 transition-colors hover:bg-brand/10"
+              >
+                <Layers
+                  aria-hidden
+                  className="h-5 w-5 shrink-0 text-brand"
+                />
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold text-ink">
+                    Part of {album.title}
+                  </span>
+                  <span className="mt-0.5 block text-sm text-ink-muted">
+                    Get all {album.itemCount} for{" "}
+                    {album.suggestedPriceCents === 0
+                      ? "whatever you like"
+                      : formatPrice(album.suggestedPriceCents)}
+                  </span>
+                </span>
+              </Link>
+            )}
+
             {paidFile ? (
               <PurchasePanel
                 productSlug={product.slug}
@@ -215,7 +250,7 @@ export default async function ProductPage(props: PageProps<"/product/[slug]">) {
             <h2 className="mb-5 text-xl font-bold tracking-tight">
               More {categoryMeta?.label.toLowerCase() ?? "like this"}
             </h2>
-            <ProductGrid products={related} priorityCount={0} />
+            <ProductGrid products={related} priorityCount={0} meta={cardMeta} />
           </section>
         )}
       </main>

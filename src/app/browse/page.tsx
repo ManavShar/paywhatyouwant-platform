@@ -4,8 +4,9 @@ import type { Metadata } from "next";
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import { SiteFooter } from "@/components/layout/SiteFooter";
 import { ProductGrid } from "@/components/product/ProductGrid";
+import { resolveCardMeta } from "@/lib/card-meta.server";
 import { BrowseToolbar } from "@/components/product/BrowseToolbar";
-import { browseProducts } from "@/lib/queries";
+import { browseCatalogue } from "@/lib/queries";
 import { CATEGORY_BY_SLUG } from "@/lib/taxonomy";
 
 export const metadata: Metadata = {
@@ -31,8 +32,9 @@ export default async function BrowsePage(props: PageProps<"/browse">) {
   const sort =
     sortRaw === "popular" || sortRaw === "price-low" ? sortRaw : "newest";
   const page = Math.max(1, Number.parseInt(first(sp.page) ?? "1", 10) || 1);
+  const cardMeta = await resolveCardMeta(sp.cards);
 
-  const { items, total, pageCount } = await browseProducts({
+  const { items, total, pageCount } = await browseCatalogue({
     q,
     category,
     freeOnly,
@@ -68,7 +70,12 @@ export default async function BrowsePage(props: PageProps<"/browse">) {
 
         {items.length > 0 ? (
           <>
-            <ProductGrid products={items} variant={variant} priorityCount={8} />
+            <ProductGrid
+              products={items}
+              variant={variant}
+              priorityCount={8}
+              meta={cardMeta}
+            />
             <Pagination page={page} pageCount={pageCount} params={sp} />
           </>
         ) : (

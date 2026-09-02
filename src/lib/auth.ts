@@ -5,6 +5,7 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { UserRole } from "@prisma/client";
 import { db } from "./db";
+import { limit, clientIp } from "./rate-limit";
 
 /**
  * Auth.js v5, email + password.
@@ -35,12 +36,57 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
       },
+      /**
+       * Rate limiting lives here, not in the `login` Server Action.
+       *
+       * The action is only one way in. `POST /api/auth/callback/credentials`
+       * is a public endpoint that reaches this function directly, and that is
+       * the path a guesser actually uses — fifteen wrong passwords through it
+       * were previously accepted without a pause. Guarding the action would
+       * have looked like a fix and stopped nothing.
+       *
+       * Two counters, because either alone is evadable: per IP catches one
+       * machine working through an account, and per account catches a
+       * distributed attempt on one target. The address is spoofable, the
+       * account being attacked is not.
+       */
       async authorize(raw) {
+        // Counted *before* validation, deliberately. Validation rejects a
+        // password shorter than eight characters, so counting afterwards meant
+        // a guesser could burn unlimited attempts for free simply by padding
+        // to seven characters — the counter would never see them. Whatever
+        // arrives here is an attempt on this account and is counted as one.
+        const attemptedEmail =
+          typeof (raw as { email?: unknown })?.email === "string"
+            ? (raw as { email: string }).email.toLowerCase().slice(0, 200)
+            : "unknown";
+
+        const [byIp, byAccount] = await Promise.all([
+          limit("login", await clientIp()),
+          limit("loginAccount", attemptedEmail),
+        ]);
+        // Returning null rather than throwing: Auth.js turns a throw here into
+        // a 500, and the caller learns nothing useful from the difference
+        // anyway.
+        //
+        // The trade-off, stated plainly: because the account counter is
+        // consulted before the password is checked, someone can lock a known
+        // address out by making ten wrong attempts against it. That is a real
+        // nuisance, and it is the lesser evil — it expires by itself in
+        // fifteen minutes and locks nobody out permanently, whereas the
+        // alternative (check the password first, count only failures) leaves
+        // an unlimited number of guesses available against every account on
+        // the site. With an eight-character minimum password, unlimited
+        // guessing is the bigger risk.
+        if (!byIp.ok || !byAccount.ok) return null;
+
         const parsed = credentialsSchema.safeParse(raw);
         if (!parsed.success) return null;
 
+        const email = parsed.data.email.toLowerCase();
+
         const user = await db.user.findUnique({
-          where: { email: parsed.data.email.toLowerCase() },
+          where: { email },
         });
 
         // Accounts imported from WordPress have no password set. Returning

@@ -112,6 +112,10 @@ export async function getVendorProducts(vendorId: string) {
       earningsCents: true,
       flagReason: true,
       createdAt: true,
+      // Whether anything has ever been bought decides whether the row may
+      // offer a Delete button at all: `OrderItem.product` is `onDelete:
+      // Restrict`, so a sold product can only be unpublished.
+      _count: { select: { orderItems: true } },
     },
   });
 }

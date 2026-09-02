@@ -1,7 +1,12 @@
 "use client";
 
 import { useMemo, useState, useId } from "react";
-import { formatPrice, parsePriceToCents, cn } from "@/lib/utils";
+import {
+  formatPrice,
+  parsePriceToCents,
+  formatAmountForInput,
+  cn,
+} from "@/lib/utils";
 
 /**
  * The one component this entire platform rests on.
@@ -177,14 +182,6 @@ export function PriceControl({
       )}
     </div>
   );
-}
-
-/** "5" not "5.00" when the amount is whole — less to delete when retyping. */
-function formatAmountForInput(cents: number): string {
-  if (cents === 0) return "0";
-  return cents % 100 === 0
-    ? String(cents / 100)
-    : (cents / 100).toFixed(2);
 }
 
 /**

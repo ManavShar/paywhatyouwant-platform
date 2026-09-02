@@ -31,6 +31,7 @@ export function SiteFooter() {
           </FooterColumn>
 
           <FooterColumn title="Company">
+            <FooterLink href="/recover">Find your purchases</FooterLink>
             <FooterLink href="/about">About</FooterLink>
             <FooterLink href="/contact">Contact</FooterLink>
             <FooterLink href="/terms">Terms &amp; conditions</FooterLink>

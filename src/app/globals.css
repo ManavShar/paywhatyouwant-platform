@@ -114,6 +114,12 @@
     margin-bottom: 1rem;
   }
 
+  /* Captioned cards need the gap to read as "below this image" rather than
+     "above the next one", so they get a little more room than bare images. */
+  .masonry-captioned > * {
+    margin-bottom: 1.75rem;
+  }
+
   /* Respect users who ask for less motion. */
   @media (prefers-reduced-motion: reduce) {
     *,

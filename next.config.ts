@@ -1,6 +1,34 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Nothing gained by announcing the framework and version to a scanner.
+  poweredByHeader: false,
+
+  experimental: {
+    serverActions: {
+      /**
+       * Server Action request bodies are capped at 1MB by default, and every
+       * upload on this site goes through one. The form promised 500MB while
+       * the framework was rejecting anything over a megabyte *before*
+       * `createProduct` ran — so none of its friendly error messages could
+       * ever fire and a normal photograph failed with a generic error.
+       *
+       * 50MB rather than 500: `storeUpload` reads the whole file into memory
+       * (`src/lib/storage.ts`), so the ceiling here is really a statement
+       * about heap. Anything larger needs a streaming route handler instead.
+       * `MAX_UPLOAD_BYTES` is set to 48MB so a rejection comes back as our
+       * message, with room left for multipart boundary overhead.
+       */
+      bodySizeLimit: "50mb",
+      /**
+       * Actions compare Origin against Host to block CSRF. Behind the
+       * Cloudflare quick tunnel used for client previews those differ, and
+       * every action — sign in, upload, follow — would be rejected.
+       */
+      allowedOrigins: ["*.trycloudflare.com"],
+    },
+  },
+
   images: {
     // `images.domains` is deprecated in Next 16 — remotePatterns only.
     remotePatterns: [

@@ -33,7 +33,7 @@ const confirmed = process.argv.includes("--confirm");
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: url }) });
 
 const PRIVATE_ROOT = path.join(process.cwd(), "storage", "media");
-const PUBLIC_ROOT = path.join(process.cwd(), "public", "media");
+const PUBLIC_ROOT = path.join(process.cwd(), "storage", "public-media");
 
 /** Only files this app wrote via storeUpload live under "uploads/". */
 function removeUploadedFile(storageKey: string) {

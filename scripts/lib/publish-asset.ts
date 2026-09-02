@@ -9,7 +9,8 @@ import path from "node:path";
  *                     never reachable by URL, only through a signed download
  *                     grant checked against a completed order.
  *
- *   public/media/…    cover images and free previews, copied here at import.
+ *   storage/public-media/…  cover images and free previews, copied here at
+ *                           import and served by `/media/[...key]`.
  *                     Next serves these as ordinary static files.
  *
  * The alternative — one tree behind a route handler that checks the database
@@ -18,7 +19,7 @@ import path from "node:path";
  * and buys static-file performance plus a security boundary you can see.
  */
 
-const PUBLIC_ROOT = path.join(process.cwd(), "public", "media");
+const PUBLIC_ROOT = path.join(process.cwd(), "storage", "public-media");
 
 export function publishAsset(storageRoot: string, key: string): string | null {
   const source = path.join(storageRoot, key);

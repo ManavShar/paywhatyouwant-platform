@@ -21,11 +21,13 @@ export async function GET(
   const result = await checkGrant(token);
   if (!result.ok) {
     const message =
-      result.reason === "expired"
-        ? "This download link has expired."
-        : result.reason === "exhausted"
-          ? "This download link has been used the maximum number of times."
-          : "Download link not found.";
+      result.reason === "revoked"
+        ? "This purchase was refunded, so the download is no longer available."
+        : result.reason === "expired"
+          ? "This download link has expired."
+          : result.reason === "exhausted"
+            ? "This download link has been used the maximum number of times."
+            : "Download link not found.";
     return NextResponse.json({ error: message }, { status: 404 });
   }
 

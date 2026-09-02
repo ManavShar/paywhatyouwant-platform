@@ -13,11 +13,17 @@ import { PriceControl } from "@/components/pricing/PriceControl";
  */
 export function PurchasePanel({
   productSlug,
+  albumSlug,
   suggestedPriceCents,
   minimumPriceCents,
   creatorName,
 }: {
-  productSlug: string;
+  /**
+   * Exactly one of these. Buying an album buys every item inside it in one
+   * payment; the checkout route turns it into an ordinary multi-item order.
+   */
+  productSlug?: string;
+  albumSlug?: string;
   suggestedPriceCents: number;
   minimumPriceCents: number;
   creatorName: string;
@@ -34,7 +40,9 @@ export function PurchasePanel({
       const res = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ productSlug, amountCents }),
+        body: JSON.stringify(
+          albumSlug ? { albumSlug, amountCents } : { productSlug, amountCents },
+        ),
       });
 
       const data = await res.json();

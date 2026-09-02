@@ -5,16 +5,21 @@ import { ProductStatus } from "@prisma/client";
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import { SiteFooter } from "@/components/layout/SiteFooter";
 import { ProductGrid } from "@/components/product/ProductGrid";
+import { resolveCardMeta } from "@/lib/card-meta.server";
 import { db } from "@/lib/db";
 import { isFollowing } from "@/lib/actions/social";
+import { requireUser } from "@/lib/auth";
 import { FollowButton } from "@/components/vendor/FollowButton";
 import { PostCard } from "@/components/vendor/PostCard";
-import { cardSelect } from "@/lib/queries";
+import { cardSelect, albumCardSelect } from "@/lib/queries";
 
 
 async function getVendor(username: string) {
   return db.user.findUnique({
-    where: { username },
+    // Usernames are stored lowercased at registration, so a capitalised URL —
+    // the form someone types from memory, or pastes out of an email — used to
+    // 404 on a page that plainly exists.
+    where: { username: username.toLowerCase() },
     select: {
       username: true,
       name: true,
@@ -28,6 +33,15 @@ async function getVendor(username: string) {
       products: {
         where: { status: ProductStatus.PUBLISHED },
         select: cardSelect,
+        orderBy: { publishedAt: "desc" },
+      },
+      // Albums lead the grid. Unlike the catalogue-wide listings, a creator's
+      // own page keeps showing the individual items as well — this is their
+      // portfolio, and hiding two thirds of their work behind a collection
+      // would misrepresent how much they have made.
+      albums: {
+        where: { status: ProductStatus.PUBLISHED },
+        select: albumCardSelect,
         orderBy: { publishedAt: "desc" },
       },
       posts: { orderBy: { createdAt: "desc" }, take: 10 },
@@ -60,7 +74,27 @@ export default async function VendorPage(
   const vendor = await getVendor(username);
   if (!vendor) notFound();
 
-  const following = await isFollowing(username);
+  const cardMeta = await resolveCardMeta((await props.searchParams).cards);
+
+  // Collections first, then single items — both rendered by the same card.
+  const catalogue = [
+    ...vendor.albums.map(({ _count, ...a }) => ({
+      ...a,
+      kind: "album" as const,
+      itemCount: _count.items,
+    })),
+    ...vendor.products.map((p) => ({ ...p, kind: "product" as const })),
+  ];
+
+  const [following, me] = await Promise.all([
+    isFollowing(username),
+    // The database, not the token — same reason as `SiteHeader`. Reading the
+    // JWT here meant a session whose account no longer exists rendered an
+    // active Follow button, which then failed with "Sign in to follow
+    // creators" and no way to sign in, while the header beside it correctly
+    // showed the visitor as signed out.
+    requireUser(),
+  ]);
   const name = vendor.name || vendor.username;
 
   return (
@@ -119,6 +153,7 @@ export default async function VendorPage(
             username={vendor.username}
             initialFollowing={following}
             initialCount={vendor.followerCount}
+            signedIn={me !== null}
           />
         </header>
 
@@ -136,8 +171,12 @@ export default async function VendorPage(
         )}
 
         <section className="mt-10">
-          {vendor.products.length > 0 ? (
-            <ProductGrid products={vendor.products} priorityCount={5} />
+          {catalogue.length > 0 ? (
+            <ProductGrid
+              products={catalogue}
+              priorityCount={5}
+              meta={cardMeta}
+            />
           ) : (
             <p className="py-20 text-center text-ink-muted">
               {name} hasn&apos;t published anything yet.

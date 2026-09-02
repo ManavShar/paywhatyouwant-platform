@@ -33,20 +33,42 @@ export default async function DownloadPage(
         <SiteHeader />
         <main className="mx-auto max-w-lg px-4 py-24 text-center">
           <h1 className="text-2xl font-extrabold tracking-tight">
-            {result.reason === "expired"
-              ? "This link has expired"
-              : "This link has been used up"}
+            {result.reason === "revoked"
+              ? "This purchase was refunded"
+              : result.reason === "expired"
+                ? "This link has expired"
+                : "This link has been used up"}
           </h1>
           <p className="mt-3 text-[0.9375rem] leading-relaxed text-ink-muted">
-            Download links last 30 days. If you still need the file, get in
-            touch and we&apos;ll sort it out.
+            {result.reason === "revoked"
+              ? "The payment for this was returned, so the download was withdrawn with it. If you think that is wrong, get in touch and we will look into it."
+              : "Download links last 30 days and ten downloads. What you bought is still yours: signed in, it's under your purchases — and if you bought as a guest, we can email you a fresh link."}
           </p>
-          <Link
-            href="/browse"
-            className="mt-8 inline-flex h-11 items-center rounded-control border border-hairline-strong px-5 text-sm font-semibold hover:bg-surface-hover"
-          >
-            Back to browsing
-          </Link>
+          {/* Sending people to a "get in touch" that leads to a stub was worse
+              than useless at the exact moment they needed help. */}
+          <div className="mt-8 flex flex-wrap justify-center gap-3">
+            <Link
+              href="/purchases"
+              className="inline-flex h-11 items-center rounded-control bg-brand px-5 text-sm font-semibold text-ink-inverse hover:bg-brand-hover"
+            >
+              Your purchases
+            </Link>
+            {/* The guest route. Without this, someone who bought without an
+                account hit a page telling them to check "your purchases",
+                which requires the account they do not have. */}
+            <Link
+              href="/recover"
+              className="inline-flex h-11 items-center rounded-control border border-hairline-strong px-5 text-sm font-semibold hover:bg-surface-hover"
+            >
+              Email me a new link
+            </Link>
+            <Link
+              href="/browse"
+              className="inline-flex h-11 items-center rounded-control border border-hairline-strong px-5 text-sm font-semibold hover:bg-surface-hover"
+            >
+              Back to browsing
+            </Link>
+          </div>
         </main>
         <SiteFooter />
       </>

@@ -1,6 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { UserRole } from "@prisma/client";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
@@ -62,4 +64,33 @@ export async function updateProfile(
   revalidatePath("/dashboard/profile");
   revalidatePath(`/vendor/${user.username}`);
   return { ok: true };
+}
+
+/**
+ * Turns an existing buyer account into a creator account.
+ *
+ * Until this existed, the only place in the codebase that ever wrote
+ * `role: VENDOR` was registration — so anyone who signed up without ticking
+ * "I want to sell my work" was stuck for good. The header offered them "Start
+ * selling", which led to `/sell`, whose only call to action was `/join`, which
+ * redirects a signed-in user to `/dashboard`, which bounces a buyer back to
+ * `/sell`. A closed loop with no way out but a hand-written database update.
+ *
+ * `vendorSince` is set here as well as at registration. It is what the public
+ * profile shows as "creator since", and leaving it null made that line vanish
+ * silently for anyone who arrived by this route.
+ */
+export async function becomeCreator() {
+  const user = await requireUser();
+  if (!user) redirect("/signin?next=/sell");
+
+  if (user.role === UserRole.BUYER) {
+    await db.user.update({
+      where: { id: user.id },
+      data: { role: UserRole.VENDOR, vendorSince: new Date() },
+    });
+    revalidatePath("/", "layout");
+  }
+
+  redirect("/dashboard");
 }

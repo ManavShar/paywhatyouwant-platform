@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { CheckCircle2, AlertCircle, ExternalLink } from "lucide-react";
 
 type Status = "not-connected" | "incomplete" | "ready";
@@ -16,13 +17,45 @@ type Status = "not-connected" | "incomplete" | "ready";
 export function ConnectPayouts({
   initialStatus,
   configured,
+  justReturned = false,
 }: {
   initialStatus: Status;
   /** False when the server has no Stripe key, which is the normal state in development. */
   configured: boolean;
+  /** True on the way back from Stripe-hosted onboarding. */
+  justReturned?: boolean;
 }) {
+  const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  /**
+   * Ask Stripe directly, once, on the way back from onboarding.
+   *
+   * `GET /api/stripe/connect` re-reads the capability and stores the answer.
+   * It was written for exactly this moment and nothing called it, so the page
+   * promised it "updates as soon as they confirm" while depending entirely on
+   * the `account.updated` webhook — which is not running at all unless someone
+   * has configured a webhook secret.
+   */
+  useEffect(() => {
+    if (!justReturned || initialStatus === "ready" || !configured) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/stripe/connect");
+        const data = await res.json();
+        if (!cancelled && data.ready) router.refresh();
+      } catch {
+        // Silent: the webhook and a manual refresh both still cover this.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [justReturned, initialStatus, configured, router]);
 
   async function start() {
     setPending(true);
